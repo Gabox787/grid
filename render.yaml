@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: grid-trading-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: EXCHANGE_ID
+        value: binance
+      - key: API_KEY
+        sync: false
+      - key: API_SECRET
+        sync: false
+      - key: SYMBOL
+        value: BTC/USDT
+      - key: UPPER_BOUND
+        value: "66000"
+      - key: LOWER_BOUND
+        value: "60000"
+      - key: GRID_LEVELS
+        value: "10"
+      - key: DEPOSIT_USDT
+        value: "2000"
+      - key: CORE_USAGE_RATIO
+        value: "0.6"
+      - key: EXTENSION_USAGE_RATIO
+        value: "0.2"
+      - key: EXTENSION_DROP_PCT
+        value: "0.15"
+      - key: EXTENSION_LEVELS
+        value: "5"
+      - key: POLL_INTERVAL
+        value: "10"
+      - key: DRY_RUN
+        value: "true"
+      - key: PLACE_INITIAL_SELLS
+        value: "true"
+      # Postgres для персистентности (Neon/Supabase, бесплатный тариф) — без него бот
+      # просто живёт в памяти как раньше, без сохранения состояния между рестартами.
+      - key: DATABASE_URL
+        sync: false
+      # Опционально: уведомления kill-switch в Telegram
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
