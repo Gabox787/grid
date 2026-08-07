@@ -28,6 +28,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -75,6 +76,7 @@ class BotState:
     last_update: Optional[float] = None
     trades_completed: int = 0
     total_profit: float = 0.0
+    total_fees: float = 0.0
     cycles: int = 0
     extension_notified: bool = False   # цена сейчас ниже LOWER_BOUND, работаем в резервной зоне
     budget_exhausted: bool = False     # весь бюджет (core+extension) использован
@@ -95,6 +97,7 @@ class GridBot:
         self.poll_interval = float(os.getenv("POLL_INTERVAL", "10"))
         self.dry_run = os.getenv("DRY_RUN", "true").lower() == "true"
         self.place_initial_sells = os.getenv("PLACE_INITIAL_SELLS", "true").lower() == "true"
+        self.fee_rate_pct = float(os.getenv("FEE_RATE_PCT", "0.001"))  # 0.1% — типовая спот-комиссия, если биржа не вернула fee
 
         # === Управление капиталом: CORE + EXTENSION ===
         self.deposit_usdt = float(os.getenv("DEPOSIT_USDT", "2000"))
@@ -134,6 +137,8 @@ class GridBot:
         self.qty_extension: float = 0.0
         self.extension_lower_bound: Optional[float] = None
         self.state = BotState()
+        self.start_time: Optional[float] = None
+        self.paused: bool = False  # управляется командой /pause в Telegram — новые входы не открываются
         self._lock = asyncio.Lock()
         self._stop_event = asyncio.Event()
 
@@ -319,6 +324,7 @@ class GridBot:
             return
         await db.save_meta("trades_completed", self.state.trades_completed)
         await db.save_meta("total_profit", self.state.total_profit)
+        await db.save_meta("total_fees", self.state.total_fees)
         await db.save_meta("extension_notified", self.state.extension_notified)
         await db.save_meta("budget_exhausted", self.state.budget_exhausted)
 
@@ -348,6 +354,7 @@ class GridBot:
         self.extension_lower_bound = await db.load_meta("extension_lower_bound", self.lower_bound)
         self.state.trades_completed = await db.load_meta("trades_completed", 0) or 0
         self.state.total_profit = await db.load_meta("total_profit", 0.0) or 0.0
+        self.state.total_fees = await db.load_meta("total_fees", 0.0) or 0.0
         self.state.extension_notified = bool(await db.load_meta("extension_notified", False))
         self.state.budget_exhausted = bool(await db.load_meta("budget_exhausted", False))
 
@@ -387,20 +394,26 @@ class GridBot:
     # Обработка исполнения ордера -> перестановка на соседний уровень
     # ------------------------------------------------------------------
 
-    async def _handle_fill(self, level: GridLevel, fill_price: float):
+    async def _handle_fill(self, level: GridLevel, fill_price: float, fee_cost: Optional[float] = None):
         async with self._lock:
+            index = level.index
+            grid_size = len(self.levels)
+
             if level.side == "buy":
                 bought_price = fill_price
                 amount = level.amount or self.qty_core
+                fee = fee_cost if fee_cost is not None else round(fill_price * amount * self.fee_rate_pct, 8)
+                self.state.total_fees += fee
+
                 level.side = None
                 level.order_id = None
                 level.entry_price = None
                 level.amount = None
                 await db.save_level(level)
-                await db.log_trade(self.symbol, "buy", level.index, fill_price, amount, None, self.dry_run)
+                await db.log_trade(self.symbol, "buy", index, fill_price, amount, None, fee, self.dry_run)
 
-                next_index = level.index + 1
-                if next_index < len(self.levels):
+                next_index = index + 1
+                if next_index < len(self.levels) and not self.paused:
                     next_level = self.levels[next_index]
                     order_id = await self._place_order("sell", next_level.price, amount)
                     if order_id:
@@ -412,30 +425,40 @@ class GridBot:
 
                 self.state.trades_completed += 1
                 await self._persist_counters()
-                logger.info(f"BUY исполнен, уровень {level.index} @ {fill_price}. Sell выставлен выше.")
+                logger.info(f"BUY исполнен, уровень {index} @ {fill_price}. Sell выставлен выше.")
+
+                await self._notify(
+                    f"🟢 ВХОД #{index}/{grid_size - 1}\n"
+                    f"{self.symbol} · {fill_price} · {amount} {self.base_currency} (~{fill_price * amount:.2f} {self.quote_currency})\n"
+                    f"Комиссия: ~{fee:.4f} {self.quote_currency}\n"
+                    f"Время: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
+                    level="info",
+                )
 
             elif level.side == "sell":
                 sell_price = fill_price
                 buy_price = level.entry_price
                 amount = level.amount or self.qty_core
+                fee = fee_cost if fee_cost is not None else round(sell_price * amount * self.fee_rate_pct, 8)
+                self.state.total_fees += fee
 
                 profit = None
                 if buy_price is not None:
                     profit = round((sell_price - buy_price) * amount, 8)
                     self.state.total_profit += profit
-                    logger.info(f"SELL исполнен, уровень {level.index} @ {sell_price}. Профит цикла: {profit:.6f}")
+                    logger.info(f"SELL исполнен, уровень {index} @ {sell_price}. Профит цикла: {profit:.6f}")
                 else:
-                    logger.info(f"SELL исполнен, уровень {level.index} @ {sell_price} (начальная продажа, профит не считается)")
+                    logger.info(f"SELL исполнен, уровень {index} @ {sell_price} (начальная продажа, профит не считается)")
 
                 level.side = None
                 level.order_id = None
                 level.entry_price = None
                 level.amount = None
                 await db.save_level(level)
-                await db.log_trade(self.symbol, "sell", level.index, sell_price, amount, profit, self.dry_run)
+                await db.log_trade(self.symbol, "sell", index, sell_price, amount, profit, fee, self.dry_run)
 
-                prev_index = level.index - 1
-                if prev_index >= 0:
+                prev_index = index - 1
+                if prev_index >= 0 and not self.paused:
                     prev_level = self.levels[prev_index]
                     order_id = await self._place_order("buy", prev_level.price, amount)
                     if order_id:
@@ -446,6 +469,18 @@ class GridBot:
 
                 self.state.trades_completed += 1
                 await self._persist_counters()
+
+                pnl_str = f"{profit:+.4f} {self.quote_currency}" if profit is not None else "н/д (начальная продажа)"
+                pnl_pct = f" ({profit / (buy_price * amount) * 100:+.2f}%)" if profit is not None and buy_price else ""
+                emoji = "🟢" if (profit or 0) >= 0 else "🔻"
+                await self._notify(
+                    f"{emoji} ВЫХОД #{index}/{grid_size - 1}\n"
+                    f"{self.symbol} · {(buy_price if buy_price else '—')} → {sell_price} · {amount} {self.base_currency}\n"
+                    f"P&L: {pnl_str}{pnl_pct}\n"
+                    f"Комиссия: ~{fee:.4f} {self.quote_currency}\n"
+                    f"Время: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
+                    level="info",
+                )
 
     # ------------------------------------------------------------------
     # Kill-switch / alert-монитор (никогда не закрывает позиции сам)
@@ -488,6 +523,18 @@ class GridBot:
     # Основной цикл
     # ------------------------------------------------------------------
 
+    def _extract_fee(self, order: dict) -> Optional[float]:
+        """Пытаемся достать реальную комиссию из ответа биржи (в quote-валюте).
+        Если биржа её не вернула — вернём None, и _handle_fill применит оценку по FEE_RATE_PCT."""
+        fee_info = order.get("fee")
+        if fee_info and fee_info.get("cost") is not None and fee_info.get("currency") == self.quote_currency:
+            return float(fee_info["cost"])
+        fees_list = order.get("fees") or []
+        matching = [f for f in fees_list if f.get("currency") == self.quote_currency and f.get("cost") is not None]
+        if matching:
+            return sum(float(f["cost"]) for f in matching)
+        return None
+
     async def _check_orders(self):
         for level in self.levels:
             if not level.order_id or not level.side:
@@ -502,7 +549,7 @@ class GridBot:
                     or (level.side == "sell" and price >= level.price)
                 )
                 if filled:
-                    await self._handle_fill(level, level.price)
+                    await self._handle_fill(level, level.price, fee_cost=None)
                 continue
 
             try:
@@ -519,7 +566,8 @@ class GridBot:
 
             if order["status"] == "closed":
                 fill_price = order.get("average") or order.get("price") or level.price
-                await self._handle_fill(level, fill_price)
+                fee_cost = self._extract_fee(order)
+                await self._handle_fill(level, fill_price, fee_cost=fee_cost)
             elif order["status"] == "canceled":
                 logger.warning(f"Ордер {level.order_id} отменён вручную, уровень {level.index} освобождён")
                 level.order_id = None
@@ -531,6 +579,7 @@ class GridBot:
         self.state.current_price = ticker["last"]
 
     async def run(self):
+        self.start_time = time.time()
         try:
             await db.init()
             self.state.status = BotStatus.STARTING
@@ -584,17 +633,25 @@ class GridBot:
         locked_in_buys = round(
             sum((lvl.amount or 0) * lvl.price for lvl in self.levels if lvl.side == "buy"), 2
         )
+        net_profit = round(self.state.total_profit - self.state.total_fees, 6)
+        roi_pct = round(self.state.total_profit / self.deposit_usdt * 100, 4) if self.deposit_usdt else None
+        uptime_seconds = round(time.time() - self.start_time, 1) if self.start_time else 0
 
         return {
             "status": self.state.status.value,
+            "paused": self.paused,
             "last_error": self.state.last_error,
             "symbol": self.symbol,
             "exchange": self.exchange_id,
             "dry_run": self.dry_run,
             "current_price": self.state.current_price,
             "last_update": self.state.last_update,
+            "uptime_seconds": uptime_seconds,
             "trades_completed": self.state.trades_completed,
             "total_profit": round(self.state.total_profit, 6),
+            "total_fees": round(self.state.total_fees, 6),
+            "net_profit": net_profit,
+            "roi_pct": roi_pct,
             "cycles": self.state.cycles,
             "grid": {
                 "lower_bound": self.lower_bound,
