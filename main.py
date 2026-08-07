@@ -64,7 +64,7 @@ app = FastAPI(title="Grid Trading Bot Dashboard", lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request, "stats": bot.get_stats()})
+    return templates.TemplateResponse(request, "dashboard.html", {"stats": bot.get_stats()})
 
 
 @app.get("/api/stats")
