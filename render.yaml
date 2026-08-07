@@ -39,6 +39,8 @@ services:
         value: "true"
       - key: PLACE_INITIAL_SELLS
         value: "true"
+      - key: FEE_RATE_PCT
+        value: "0.001"
       # Postgres для персистентности (Neon/Supabase, бесплатный тариф) — без него бот
       # просто живёт в памяти как раньше, без сохранения состояния между рестартами.
       - key: DATABASE_URL
