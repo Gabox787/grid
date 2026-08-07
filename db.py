@@ -69,10 +69,13 @@ async def init():
                 price DOUBLE PRECISION NOT NULL,
                 amount DOUBLE PRECISION NOT NULL,
                 profit DOUBLE PRECISION,
+                fee DOUBLE PRECISION,
                 dry_run BOOLEAN NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT now()
             )
         """)
+        # На случай апгрейда существующей БД без колонки fee
+        await conn.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION")
     logger.info("Подключение к БД установлено, таблицы готовы")
 
 
@@ -147,17 +150,17 @@ async def load_meta(key: str, default=None):
 
 
 async def log_trade(symbol: str, side: str, level_index: int, price: float, amount: float,
-                     profit: Optional[float], dry_run: bool) -> None:
+                     profit: Optional[float], fee: Optional[float], dry_run: bool) -> None:
     if not _pool:
         return
     try:
         async with _pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO trades (symbol, side, level_index, price, amount, profit, dry_run)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO trades (symbol, side, level_index, price, amount, profit, fee, dry_run)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
-                symbol, side, level_index, price, amount, profit, dry_run,
+                symbol, side, level_index, price, amount, profit, fee, dry_run,
             )
     except Exception as e:
         logger.error(f"Ошибка записи сделки в БД: {e}")
@@ -182,7 +185,7 @@ async def fetch_trades(limit: int = 200) -> list[dict]:
 async def fetch_trade_stats() -> dict:
     empty = {
         "total_trades": 0, "closed_cycles": 0, "wins": 0, "losses": 0,
-        "win_rate": None, "total_profit": 0.0, "avg_profit_per_cycle": None,
+        "win_rate": None, "total_profit": 0.0, "avg_profit_per_cycle": None, "total_fees": 0.0,
     }
     if not _pool:
         return empty
@@ -194,7 +197,8 @@ async def fetch_trade_stats() -> dict:
                 COUNT(*) FILTER (WHERE profit > 0) AS wins,
                 COUNT(*) FILTER (WHERE profit <= 0 AND profit IS NOT NULL) AS losses,
                 COALESCE(SUM(profit), 0) AS total_profit,
-                AVG(profit) AS avg_profit_per_cycle
+                AVG(profit) AS avg_profit_per_cycle,
+                COALESCE(SUM(fee), 0) AS total_fees
             FROM trades
         """)
         closed = row["closed_cycles"] or 0
@@ -209,4 +213,5 @@ async def fetch_trade_stats() -> dict:
             "avg_profit_per_cycle": (
                 float(row["avg_profit_per_cycle"]) if row["avg_profit_per_cycle"] is not None else None
             ),
+            "total_fees": float(row["total_fees"] or 0),
         }
