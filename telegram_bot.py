@@ -80,6 +80,15 @@ async def create_and_run(grid_bot, db_module):
     def _is_owner(message: Message) -> bool:
         return message.chat.id == owner_id
 
+    async def _guard(message: Message) -> bool:
+        """True — можно выполнять команду. False — уже ответили (не владелец, либо бот ещё стартует)."""
+        if not _is_owner(message):
+            return False
+        if not grid_bot.ready.is_set():
+            await message.answer("⏳ Бот ещё запускается (инициализация сетки / восстановление из БД). Попробуй через 10-15 секунд.")
+            return False
+        return True
+
     @dp.message(Command("start", "help"))
     async def cmd_help(message: Message):
         if not _is_owner(message):
@@ -88,7 +97,7 @@ async def create_and_run(grid_bot, db_module):
 
     @dp.message(Command("status"))
     async def cmd_status(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         s = grid_bot.get_stats()
         c = s["capital"]
@@ -120,7 +129,7 @@ async def create_and_run(grid_bot, db_module):
 
     @dp.message(Command("grid"))
     async def cmd_grid(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         q = grid_bot.quote_currency
         b = grid_bot.base_currency
@@ -178,7 +187,7 @@ async def create_and_run(grid_bot, db_module):
 
     @dp.message(Command("trades"))
     async def cmd_trades(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         parts = message.text.split()
         limit = 10
@@ -203,7 +212,7 @@ async def create_and_run(grid_bot, db_module):
 
     @dp.message(Command("pnl", "roi"))
     async def cmd_pnl(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         stats = await db_module.fetch_trade_stats()
         s = grid_bot.get_stats()
@@ -225,35 +234,35 @@ async def create_and_run(grid_bot, db_module):
 
     @dp.message(Command("fees"))
     async def cmd_fees(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         s = grid_bot.get_stats()
         await message.answer(f"Комиссии за всё время: ~{s['total_fees']:.4f} {grid_bot.quote_currency}")
 
     @dp.message(Command("uptime"))
     async def cmd_uptime(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         s = grid_bot.get_stats()
         await message.answer(f"⏱ Аптайм: {_fmt_uptime(s['uptime_seconds'])}")
 
     @dp.message(Command("pause"))
     async def cmd_pause(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         grid_bot.paused = True
         await message.answer("⏸ Новые входы остановлены. Открытые ордера и позиции не трогаю.")
 
     @dp.message(Command("resume"))
     async def cmd_resume(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         grid_bot.paused = False
         await message.answer("▶️ Возобновляю открытие новых ордеров по мере филлов.")
 
     @dp.message(Command("export"))
     async def cmd_export(message: Message):
-        if not _is_owner(message):
+        if not await _guard(message):
             return
         trades = await db_module.fetch_trades(limit=100000)
         if not trades:
