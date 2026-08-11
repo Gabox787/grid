@@ -122,18 +122,59 @@ async def create_and_run(grid_bot, db_module):
     async def cmd_grid(message: Message):
         if not _is_owner(message):
             return
+        q = grid_bot.quote_currency
+        b = grid_bot.base_currency
+        fee_rate = grid_bot.fee_rate_pct
+
         lines = []
         free_count = 0
-        for lvl in grid_bot.levels:
-            if lvl.side:
-                emoji = "🟢" if lvl.side == "buy" else "🔴"
-                extra = f" (вход {lvl.entry_price})" if lvl.side == "sell" and lvl.entry_price else ""
-                lines.append(f"{emoji} #{lvl.index} {lvl.price} — {lvl.side.upper()}{extra}")
-            else:
+        levels = grid_bot.levels
+
+        for i, lvl in enumerate(levels):
+            if not lvl.side:
                 free_count += 1
-        text = "\n".join(lines) if lines else "Нет открытых ордеров"
-        text += f"\n\nСвободных уровней: {free_count} / {len(grid_bot.levels)}"
-        await message.answer(text)
+                continue
+
+            amount = lvl.amount or 0
+
+            if lvl.side == "buy":
+                entry_price = lvl.price  # ещё не сработал — это и есть цена срабатывания
+                next_lvl = levels[i + 1] if i + 1 < len(levels) else None
+                exit_price = next_lvl.price if next_lvl else None
+                trigger_note = f"BUY @ {entry_price}"
+            else:
+                entry_price = lvl.entry_price
+                exit_price = lvl.price  # это и есть цена срабатывания для sell
+                trigger_note = f"SELL @ {exit_price}"
+
+            sum_str = f"~{entry_price * amount:.2f} {q}" if entry_price else "—"
+
+            if entry_price and exit_price:
+                profit = (exit_price - entry_price) * amount
+                profit_pct = (exit_price - entry_price) / entry_price * 100
+                fee = fee_rate * amount * (entry_price + exit_price)
+                profit_str = f"~{profit:+.2f} {q} ({profit_pct:+.2f}%)"
+                fee_str = f"~{fee:.2f} {q}"
+            else:
+                profit_str = "— (нет уровня для цикла)"
+                fee_str = "—"
+
+            emoji = "🟢" if lvl.side == "buy" else "🔴"
+            lines.append(
+                f"{emoji} Сетка #{i}\n"
+                f"Сработает: {trigger_note}\n"
+                f"Вход: {entry_price if entry_price else '—'} → Выход: {exit_price if exit_price else '—'}\n"
+                f"Объём: {amount} {b} ({sum_str})\n"
+                f"Профит: {profit_str}\n"
+                f"Комиссия: {fee_str}"
+            )
+
+        text = "\n\n".join(lines) if lines else "Нет открытых ордеров"
+        text += f"\n\nСвободных уровней: {free_count} / {len(levels)}"
+
+        # Telegram режет сообщения длиннее ~4096 символов — на всякий случай бьём на части
+        for chunk_start in range(0, len(text), 3800):
+            await message.answer(text[chunk_start:chunk_start + 3800])
 
     @dp.message(Command("trades"))
     async def cmd_trades(message: Message):
