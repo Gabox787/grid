@@ -139,6 +139,7 @@ class GridBot:
         self.state = BotState()
         self.start_time: Optional[float] = None
         self.paused: bool = False  # управляется командой /pause в Telegram — новые входы не открываются
+        self.ready = asyncio.Event()  # выставляется после успешной инициализации/восстановления сетки
         self._lock = asyncio.Lock()
         self._stop_event = asyncio.Event()
 
@@ -589,6 +590,7 @@ class GridBot:
                 await self.initialize_grid()
 
             self.state.status = BotStatus.RUNNING
+            self.ready.set()
         except Exception as e:
             logger.exception("Ошибка инициализации сетки")
             self.state.status = BotStatus.ERROR
