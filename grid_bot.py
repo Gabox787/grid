@@ -318,6 +318,10 @@ class GridBot:
     async def _persist_full_state(self):
         if not db.enabled():
             return
+        # Сначала полностью чистим таблицу — иначе при уменьшении GRID_LEVELS/смене границ
+        # старые уровни с "хвостовыми" индексами остаются orphan-строками и могут потом
+        # подмешаться при восстановлении, ломая порядок цен по возрастанию.
+        await db.clear_levels()
         await db.save_meta("config", self._config_fingerprint())
         await db.save_meta("qty_core", self.qty_core)
         await db.save_meta("qty_extension", self.qty_extension)
@@ -347,14 +351,29 @@ class GridBot:
         if not rows:
             return False
 
-        logger.info(f"Восстанавливаю {len(rows)} уровней сетки из БД после рестарта")
-        self.levels = [
+        levels = [
             GridLevel(
                 index=r["idx"], price=r["price"], side=r["side"], order_id=r["order_id"],
                 entry_price=r["entry_price"], amount=r["amount"],
             )
             for r in rows
         ]
+
+        # Защита от orphan-строк / рассинхрона: массив уровней ДОЛЖЕН быть строго
+        # отсортирован по возрастанию цены (на этом держится вся логика "buy fills -> sell
+        # выше", "sell fills -> buy ниже"). Если это нарушено — данным из БД не доверяем
+        # и переинициализируем сетку с нуля, а не тащим сломанное состояние в торговлю.
+        prices = [lvl.price for lvl in levels]
+        if prices != sorted(prices) or len(levels) != len(set(p for p in prices)):
+            logger.error(
+                f"Уровни из БД не отсортированы по возрастанию (обнаружены orphan-строки "
+                f"от прошлой конфигурации) — переинициализирую сетку с нуля вместо восстановления."
+            )
+            await db.clear_levels()
+            return False
+
+        logger.info(f"Восстанавливаю {len(rows)} уровней сетки из БД после рестарта")
+        self.levels = levels
         self.qty_core = await db.load_meta("qty_core", 0.0) or 0.0
         self.qty_extension = await db.load_meta("qty_extension", 0.0) or 0.0
         self.extension_lower_bound = await db.load_meta("extension_lower_bound", self.lower_bound)
