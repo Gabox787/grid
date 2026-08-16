@@ -86,8 +86,13 @@ class GridBot:
     def __init__(self):
         # === Базовая конфигурация ===
         self.exchange_id = os.getenv("EXCHANGE_ID", "binance")
-        self.api_key = os.getenv("API_KEY", "")
-        self.api_secret = os.getenv("API_SECRET", "")
+        # Пустая строка "" в Python — это НЕ None, а ccxt проверяет именно "is not None"
+        # при решении, добавлять ли подписанные (авторизованные) запросы в load_markets().
+        # Поэтому пустую строку принудительно превращаем в None, чтобы бот честно работал
+        # без реальных ключей биржи в DRY_RUN — иначе ccxt пытается подписать запрос
+        # пустыми учётными данными и падает с AuthenticationError даже на публичных данных.
+        self.api_key = os.getenv("API_KEY") or None
+        self.api_secret = os.getenv("API_SECRET") or None
         self.symbol = os.getenv("SYMBOL", "BTC/USDT")
 
         self.upper_bound = float(os.getenv("UPPER_BOUND", "66000"))
