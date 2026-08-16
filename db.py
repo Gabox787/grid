@@ -88,6 +88,19 @@ async def close():
         await _pool.close()
 
 
+async def clear_levels() -> None:
+    """Полностью очищает таблицу grid_levels. Вызывается перед записью свежей сетки,
+    чтобы старые уровни от прошлых конфигураций (другой GRID_LEVELS/границы) не оставались
+    orphan-строками в БД и не подмешивались при восстановлении после рестарта."""
+    if not _pool:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            await conn.execute("DELETE FROM grid_levels")
+    except Exception as e:
+        logger.error(f"Ошибка очистки старых уровней сетки: {e}")
+
+
 async def save_level(level) -> None:
     if not _pool:
         return
