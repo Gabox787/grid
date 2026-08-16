@@ -81,11 +81,19 @@ async def create_and_run(grid_bot, db_module):
         return message.chat.id == owner_id
 
     async def _guard(message: Message) -> bool:
-        """True — можно выполнять команду. False — уже ответили (не владелец, либо бот ещё стартует)."""
+        """True — можно выполнять команду. False — уже ответили (не владелец, либо бот ещё стартует/упал)."""
         if not _is_owner(message):
             return False
         if not grid_bot.ready.is_set():
-            await message.answer("⏳ Бот ещё запускается (инициализация сетки / восстановление из БД). Попробуй через 10-15 секунд.")
+            if grid_bot.state.status == "error":
+                await message.answer(
+                    f"❌ Бот не смог инициализировать сетку и стоит с ошибкой:\n\n"
+                    f"{grid_bot.state.last_error or 'неизвестная ошибка'}\n\n"
+                    f"Смотри Render → Logs для полного трейсбэка. Бот НЕ перезапускается сам — "
+                    f"нужен redeploy после исправления."
+                )
+            else:
+                await message.answer("⏳ Бот ещё запускается (инициализация сетки / восстановление из БД). Попробуй через 10-15 секунд.")
             return False
         return True
 
