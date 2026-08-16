@@ -586,20 +586,37 @@ class GridBot:
 
     async def run(self):
         self.start_time = time.time()
-        try:
-            await db.init()
-            self.state.status = BotStatus.STARTING
+        await db.init()
+        self.state.status = BotStatus.STARTING
 
-            resumed = await self._try_resume_from_db()
-            if not resumed:
-                await self.initialize_grid()
+        # Retry-цикл на старте: если инициализация упала (например, база ещё просыпается,
+        # или временный сетевой сбой у биржи) — пробуем снова с задержкой, а не остаёмся
+        # навсегда в ERROR до ручного redeploy. /status в Telegram и логи всё равно покажут
+        # last_error на каждой попытке, так что реальная (не транзиентная) проблема видна сразу.
+        retry_delay = 10.0
+        max_retry_delay = 60.0
+        attempt = 0
+        while not self._stop_event.is_set():
+            attempt += 1
+            try:
+                resumed = await self._try_resume_from_db()
+                if not resumed:
+                    await self.initialize_grid()
+                self.state.status = BotStatus.RUNNING
+                self.ready.set()
+                break
+            except Exception as e:
+                logger.exception(f"Ошибка инициализации сетки (попытка {attempt}), повтор через {retry_delay:.0f}с")
+                self.state.status = BotStatus.ERROR
+                self.state.last_error = str(e)
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=retry_delay)
+                except asyncio.TimeoutError:
+                    pass
+                retry_delay = min(retry_delay * 1.5, max_retry_delay)
 
-            self.state.status = BotStatus.RUNNING
-            self.ready.set()
-        except Exception as e:
-            logger.exception("Ошибка инициализации сетки")
-            self.state.status = BotStatus.ERROR
-            self.state.last_error = str(e)
+        if self._stop_event.is_set():
+            self.state.status = BotStatus.STOPPED
             return
 
         while not self._stop_event.is_set():
