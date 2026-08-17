@@ -182,13 +182,38 @@ class GridBot:
         getattr(logger, level, logger.warning)(message)
         if not self.telegram_token or not self.telegram_chat_id:
             return
-        try:
-            import aiohttp
-            url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                await session.post(url, json={"chat_id": self.telegram_chat_id, "text": message})
-        except Exception as e:
-            logger.error(f"Не удалось отправить Telegram-уведомление: {e}")
+
+        import aiohttp
+        url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
+
+        for attempt in range(3):
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                    async with session.post(url, json={"chat_id": self.telegram_chat_id, "text": message}) as resp:
+                        if resp.status == 200:
+                            return
+                        if resp.status == 429:
+                            # Telegram сам подсказывает сколько ждать (rate limit на чат)
+                            retry_after = 2.0
+                            try:
+                                data = await resp.json()
+                                retry_after = float(data.get("parameters", {}).get("retry_after", 2))
+                            except Exception:
+                                pass
+                            logger.warning(
+                                f"Telegram rate limit (429), жду {retry_after:.0f}с и повторяю "
+                                f"(попытка {attempt + 1}/3)"
+                            )
+                            await asyncio.sleep(retry_after)
+                            continue
+                        body = await resp.text()
+                        logger.error(f"Telegram sendMessage вернул {resp.status}: {body}")
+                        return
+            except Exception as e:
+                logger.error(f"Не удалось отправить Telegram-уведомление (попытка {attempt + 1}/3): {e}")
+                await asyncio.sleep(1.0)
+
+        logger.error(f"Telegram-уведомление НЕ доставлено после 3 попыток: {message[:80]}...")
 
     # ------------------------------------------------------------------
     # Расчёт уровней сетки
