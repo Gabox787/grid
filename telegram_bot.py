@@ -59,7 +59,8 @@ HELP_TEXT = (
     "/uptime — сколько времени работает бот\n"
     "/pause — остановить новые входы (открытые позиции не трогает)\n"
     "/resume — снять паузу\n"
-    "/export — выгрузить весь журнал сделок в CSV"
+    "/export — выгрузить весь журнал сделок в CSV\n"
+    "/reset_stats — сбросить профит/комиссии/историю сделок (сетку не трогает)"
 )
 
 
@@ -294,6 +295,16 @@ async def create_and_run(grid_bot, db_module):
             await message.answer_document(FSInputFile(path, filename="trades.csv"))
         finally:
             os.unlink(path)
+
+    @dp.message(Command("reset_stats"))
+    async def cmd_reset_stats(message: Message):
+        if not await _guard(message):
+            return
+        await grid_bot.reset_stats()
+        await message.answer(
+            "🧹 Статистика сброшена: профит, комиссии, количество сделок и журнал — всё "
+            "по нулям. Живая сетка и открытые ордера не тронуты."
+        )
 
     logger.info("Telegram-бот управления запущен (long polling)")
     await dp.start_polling(bot)
