@@ -63,6 +63,7 @@ grid-bot/
 | `PLACE_INITIAL_SELLS`       | Выставлять ли Sell-ордера при старте                  | `true`       |
 | `DATABASE_URL`              | Postgres connection string (персистентность)          | не задан → работа только в памяти |
 | `FEE_RATE_PCT`              | Оценка комиссии, если биржа её не вернула (0.001 = 0.1%) | `0.001`   |
+| `STALE_RESUME_THRESHOLD_SECONDS` | DRY_RUN: простой дольше этого — пересобрать сетку у текущей цены, а не марафонить фиктивные филлы | `1800` |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Push-уведомления + команды (owner-only) | не заданы → только логи |
 
 ### Депозит $2000: как считается бюджет
