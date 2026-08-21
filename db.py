@@ -162,6 +162,19 @@ async def load_meta(key: str, default=None):
             return default
 
 
+async def reset_trade_history() -> None:
+    """Полностью очищает журнал сделок (таблица trades). НЕ трогает grid_levels —
+    текущая живая сетка и открытые ордера остаются как есть, сбрасывается только
+    статистика/история (нужно, например, чтобы убрать фейковые циклы от старого бага)."""
+    if not _pool:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            await conn.execute("DELETE FROM trades")
+    except Exception as e:
+        logger.error(f"Ошибка очистки журнала сделок: {e}")
+
+
 async def log_trade(symbol: str, side: str, level_index: int, price: float, amount: float,
                      profit: Optional[float], fee: Optional[float], dry_run: bool) -> None:
     if not _pool:
