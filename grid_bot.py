@@ -103,6 +103,13 @@ class GridBot:
         self.dry_run = os.getenv("DRY_RUN", "true").lower() == "true"
         self.place_initial_sells = os.getenv("PLACE_INITIAL_SELLS", "true").lower() == "true"
         self.fee_rate_pct = float(os.getenv("FEE_RATE_PCT", "0.001"))  # 0.1% — типовая спот-комиссия, если биржа не вернула fee
+        # В DRY_RUN нет реального стакана, который исполнял бы ордера пока бот лежит —
+        # есть только сравнение "текущая цена vs уровень" на момент опроса. Если простой
+        # был долгим, это превращается в мгновенный "марафон" фиктивных фillov против
+        # текущей цены вместо честной картины по шагам. Порог ниже — с какого простоя (сек)
+        # в DRY_RUN безопаснее честно пересобрать сетку у текущей цены, чем разыгрывать это.
+        # В LIVE (dry_run=false) не применяется — там реальные ордера на бирже, реальные фиты.
+        self.stale_resume_threshold = float(os.getenv("STALE_RESUME_THRESHOLD_SECONDS", "1800"))
 
         # === Управление капиталом: CORE + EXTENSION ===
         self.deposit_usdt = float(os.getenv("DEPOSIT_USDT", "2000"))
@@ -363,6 +370,16 @@ class GridBot:
         await db.save_meta("extension_notified", self.state.extension_notified)
         await db.save_meta("budget_exhausted", self.state.budget_exhausted)
 
+    async def reset_stats(self):
+        """Сбрасывает счётчики и журнал сделок (для команды /reset_stats), не трогая
+        текущую живую сетку/открытые ордера — только историю и статистику."""
+        async with self._lock:
+            self.state.trades_completed = 0
+            self.state.total_profit = 0.0
+            self.state.total_fees = 0.0
+            await db.reset_trade_history()
+            await self._persist_counters()
+
     async def _try_resume_from_db(self) -> bool:
         if not db.enabled():
             return False
@@ -375,6 +392,27 @@ class GridBot:
         rows = await db.load_levels()
         if not rows:
             return False
+
+        # В DRY_RUN нет реального стакана биржи, который исполнял бы ордера пока бот лежал —
+        # только сравнение "текущая цена vs уровень" на момент опроса. Если простой был долгим
+        # (упал сервис, не сработал аптайм-монитор и т.п.), это выльется в мгновенный "марафон"
+        # фиктивных филлов против текущей цены сразу по всем уровням, которые цена прошла за
+        # время простоя — нечестная картина и куча спама в Telegram. Раз реальных денег тут нет,
+        # честнее просто пересобрать сетку у текущей цены, чем разыгрывать этот марафон.
+        # В LIVE (dry_run=false) это НЕ применяется: там реальные ордера с реальными фитами,
+        # _reconcile_with_exchange() ниже и так возьмёт с биржи правду по каждому ордеру.
+        if self.dry_run:
+            last_update = await db.load_meta("last_update", None)
+            if last_update is not None:
+                downtime = time.time() - float(last_update)
+                if downtime > self.stale_resume_threshold:
+                    logger.warning(
+                        f"DRY_RUN: обнаружен простой ~{downtime / 60:.0f} мин (порог "
+                        f"{self.stale_resume_threshold / 60:.0f} мин) — вместо марафона фиктивных "
+                        f"филлов пересобираю сетку заново у текущей цены."
+                    )
+                    await db.clear_levels()
+                    return False
 
         levels = [
             GridLevel(
@@ -677,6 +715,8 @@ class GridBot:
 
             self.state.last_update = time.time()
             self.state.cycles += 1
+            if db.enabled():
+                await db.save_meta("last_update", self.state.last_update)
 
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self.poll_interval)
