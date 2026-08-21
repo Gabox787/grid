@@ -67,6 +67,13 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {"stats": bot.get_stats()})
 
 
+@app.head("/", include_in_schema=False)
+async def dashboard_head():
+    """Многие аптайм-мониторы (UptimeRobot и др.) по умолчанию шлют HEAD, а не GET.
+    Без этого обработчика они получали бы 405 и считали сервис "лежащим", хотя он живой."""
+    return Response(status_code=200)
+
+
 @app.get("/api/stats")
 async def api_stats():
     return JSONResponse(bot.get_stats())
@@ -74,8 +81,13 @@ async def api_stats():
 
 @app.get("/api/health")
 async def health():
-    """Эндпоинт для health-check на Render."""
+    """Эндпоинт для health-check на Render / аптайм-мониторов."""
     return {"ok": True}
+
+
+@app.head("/api/health", include_in_schema=False)
+async def health_head():
+    return Response(status_code=200)
 
 
 @app.get("/api/trades")
