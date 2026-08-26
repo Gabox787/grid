@@ -454,6 +454,7 @@ class GridBot:
         какие-то ордера успели исполниться на бирже — обрабатываем эти филлы сейчас."""
         if self.dry_run:
             return
+        events: list = []
         for level in list(self.levels):
             if not level.order_id or not level.side:
                 continue
@@ -472,17 +473,52 @@ class GridBot:
             if order["status"] == "closed":
                 fill_price = order.get("average") or order.get("price") or level.price
                 logger.info(f"Обнаружен филл во время простоя: уровень {level.index} @ {fill_price}")
-                await self._handle_fill(level, fill_price)
+                await self._handle_fill(level, fill_price, events=events)
             elif order["status"] == "canceled":
                 level.order_id = None
                 level.side = None
                 await db.save_level(level)
+        await self._send_batched_events(events)
 
     # ------------------------------------------------------------------
     # Обработка исполнения ордера -> перестановка на соседний уровень
     # ------------------------------------------------------------------
 
-    async def _handle_fill(self, level: GridLevel, fill_price: float, fee_cost: Optional[float] = None):
+    def _format_fill_event(self, ev: dict) -> str:
+        q, b = self.quote_currency, self.base_currency
+        sum_usd = ev["price"] * ev["amount"]
+        time_str = ev["time"].strftime("%Y-%m-%d %H:%M:%S")
+
+        if ev["type"] == "buy":
+            return (
+                f"📉 ВХОД BUY ур.{ev['index']}/{ev['grid_size'] - 1}\n"
+                f"💲 Цена: {ev['price']}\n"
+                f"💵 Сумма: {sum_usd:.2f} {q} ({ev['amount']} {b})\n"
+                f"💰 Комиссия: ~{ev['fee']:.4f} {q}\n"
+                f"🕐 {time_str} UTC"
+            )
+
+        profit = ev["profit"]
+        buy_price = ev["entry_price"]
+        if profit is not None:
+            pnl_pct = (profit / (buy_price * ev["amount"]) * 100) if buy_price else 0.0
+            pnl_str = f"{profit:+.4f} {q} ({pnl_pct:+.2f}%)"
+            emoji = "📈" if profit >= 0 else "🔻"
+        else:
+            pnl_str = "н/д (начальная продажа)"
+            emoji = "📈"
+
+        return (
+            f"{emoji} ВЫХОД SELL ур.{ev['index']}/{ev['grid_size'] - 1}\n"
+            f"💲 {buy_price if buy_price else '—'} → {ev['price']}\n"
+            f"💵 Сумма: {sum_usd:.2f} {q} ({ev['amount']} {b})\n"
+            f"🎯 P&L: {pnl_str}\n"
+            f"💰 Комиссия: ~{ev['fee']:.4f} {q}\n"
+            f"🕐 {time_str} UTC"
+        )
+
+    async def _handle_fill(self, level: GridLevel, fill_price: float, fee_cost: Optional[float] = None,
+                            events: Optional[list] = None):
         async with self._lock:
             index = level.index
             grid_size = len(self.levels)
@@ -515,13 +551,15 @@ class GridBot:
                 await self._persist_counters()
                 logger.info(f"BUY исполнен, уровень {index} @ {fill_price}. Sell выставлен выше.")
 
-                await self._notify(
-                    f"🟢 ВХОД #{index}/{grid_size - 1}\n"
-                    f"{self.symbol} · {fill_price} · {amount} {self.base_currency} (~{fill_price * amount:.2f} {self.quote_currency})\n"
-                    f"Комиссия: ~{fee:.4f} {self.quote_currency}\n"
-                    f"Время: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
-                    level="info",
-                )
+                event = {
+                    "type": "buy", "index": index, "grid_size": grid_size,
+                    "price": fill_price, "amount": amount, "fee": fee,
+                    "time": datetime.now(timezone.utc),
+                }
+                if events is not None:
+                    events.append(event)
+                else:
+                    await self._notify(self._format_fill_event(event), level="info")
 
             elif level.side == "sell":
                 sell_price = fill_price
@@ -558,17 +596,30 @@ class GridBot:
                 self.state.trades_completed += 1
                 await self._persist_counters()
 
-                pnl_str = f"{profit:+.4f} {self.quote_currency}" if profit is not None else "н/д (начальная продажа)"
-                pnl_pct = f" ({profit / (buy_price * amount) * 100:+.2f}%)" if profit is not None and buy_price else ""
-                emoji = "🟢" if (profit or 0) >= 0 else "🔻"
-                await self._notify(
-                    f"{emoji} ВЫХОД #{index}/{grid_size - 1}\n"
-                    f"{self.symbol} · {(buy_price if buy_price else '—')} → {sell_price} · {amount} {self.base_currency}\n"
-                    f"P&L: {pnl_str}{pnl_pct}\n"
-                    f"Комиссия: ~{fee:.4f} {self.quote_currency}\n"
-                    f"Время: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
-                    level="info",
-                )
+                event = {
+                    "type": "sell", "index": index, "grid_size": grid_size,
+                    "price": sell_price, "amount": amount, "fee": fee,
+                    "entry_price": buy_price, "profit": profit,
+                    "time": datetime.now(timezone.utc),
+                }
+                if events is not None:
+                    events.append(event)
+                else:
+                    await self._notify(self._format_fill_event(event), level="info")
+
+    async def _send_batched_events(self, events: list):
+        """Объединяет несколько филлов за один цикл в ОДНО Telegram-сообщение —
+        снижает риск rate-limit при быстром движении цены (много филлов подряд)
+        и не заваливает чат отдельными сообщениями каждую секунду."""
+        if not events:
+            return
+        blocks = [self._format_fill_event(ev) for ev in events]
+        if len(blocks) == 1:
+            text = blocks[0]
+        else:
+            text = f"📦 {len(blocks)} событий за один цикл:\n\n" + "\n\n".join(blocks)
+        for chunk_start in range(0, len(text), 3800):
+            await self._notify(text[chunk_start:chunk_start + 3800], level="info")
 
     # ------------------------------------------------------------------
     # Kill-switch / alert-монитор (никогда не закрывает позиции сам)
@@ -624,6 +675,8 @@ class GridBot:
         return None
 
     async def _check_orders(self):
+        events: list = []
+
         for level in self.levels:
             if not level.order_id or not level.side:
                 continue
@@ -637,7 +690,7 @@ class GridBot:
                     or (level.side == "sell" and price >= level.price)
                 )
                 if filled:
-                    await self._handle_fill(level, level.price, fee_cost=None)
+                    await self._handle_fill(level, level.price, fee_cost=None, events=events)
                 continue
 
             try:
@@ -655,12 +708,14 @@ class GridBot:
             if order["status"] == "closed":
                 fill_price = order.get("average") or order.get("price") or level.price
                 fee_cost = self._extract_fee(order)
-                await self._handle_fill(level, fill_price, fee_cost=fee_cost)
+                await self._handle_fill(level, fill_price, fee_cost=fee_cost, events=events)
             elif order["status"] == "canceled":
                 logger.warning(f"Ордер {level.order_id} отменён вручную, уровень {level.index} освобождён")
                 level.order_id = None
                 level.side = None
                 await db.save_level(level)
+
+        await self._send_batched_events(events)
 
     async def _update_price(self):
         ticker = await self._safe_call(self.exchange.fetch_ticker, self.symbol)
