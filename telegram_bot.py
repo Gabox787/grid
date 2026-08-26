@@ -49,6 +49,16 @@ def _fmt_uptime(seconds: float) -> str:
     return " ".join(parts)
 
 
+_DIGIT_EMOJI = {
+    "0": "0️⃣", "1": "1️⃣", "2": "2️⃣", "3": "3️⃣", "4": "4️⃣",
+    "5": "5️⃣", "6": "6️⃣", "7": "7️⃣", "8": "8️⃣", "9": "9️⃣",
+}
+
+
+def _num_emoji(n: int) -> str:
+    return "".join(_DIGIT_EMOJI[d] for d in str(n))
+
+
 HELP_TEXT = (
     "🤖 Grid Bot — команды:\n"
     "/status — общая сводка (цена, статус, бюджет, профит)\n"
@@ -142,54 +152,70 @@ async def create_and_run(grid_bot, db_module):
             return
         q = grid_bot.quote_currency
         b = grid_bot.base_currency
-        fee_rate = grid_bot.fee_rate_pct
-
-        lines = []
-        free_count = 0
+        price = grid_bot.state.current_price
         levels = grid_bot.levels
 
+        # Собираем все занятые уровни с их вход/выход/объём — та же логика,
+        # что и раньше, просто теперь используется и для шапки, и для списка.
+        occupied = []
+        free_count = 0
         for i, lvl in enumerate(levels):
             if not lvl.side:
                 free_count += 1
                 continue
-
             amount = lvl.amount or 0
-
             if lvl.side == "buy":
                 entry_price = lvl.price  # ещё не сработал — это и есть цена срабатывания
                 next_lvl = levels[i + 1] if i + 1 < len(levels) else None
                 exit_price = next_lvl.price if next_lvl else None
-                trigger_note = f"BUY @ {entry_price}"
             else:
                 entry_price = lvl.entry_price
-                exit_price = lvl.price  # это и есть цена срабатывания для sell
-                trigger_note = f"SELL @ {exit_price}"
+                exit_price = lvl.price  # цена срабатывания для sell — это цена самого уровня
+            occupied.append((i, lvl, entry_price, exit_price, amount))
 
-            sum_str = f"~{entry_price * amount:.2f} {q}" if entry_price else "—"
+        if not occupied:
+            await message.answer(f"Нет открытых ордеров\n\nСвободных уровней: {free_count} / {len(levels)}")
+            return
+
+        lines = []
+
+        # Шапка — ближайший к срабатыванию уровень (минимальное расстояние до текущей цены)
+        if price is not None:
+            nearest = min(occupied, key=lambda e: abs(price - e[1].price))
+            i, lvl, entry_price, exit_price, amount = nearest
+            remaining = (price - lvl.price) if lvl.side == "buy" else (lvl.price - price)
+            icon = "📉" if lvl.side == "buy" else "📈"
+            lines.append(
+                f"{icon} {lvl.side.upper()} ур.{i}\n"
+                f"💲 Цена: {lvl.price}\n"
+                f"🎯 Цель: {exit_price if exit_price else '—'}\n"
+                f"💰 Остаток: {abs(remaining):.2f}$\n"
+            )
+
+        lines.append("🎯 Сетка:")
+        for idx, (i, lvl, entry_price, exit_price, amount) in enumerate(occupied, start=1):
+            icon = "📉" if lvl.side == "buy" else "📈"
+            num = _num_emoji(idx)
+            target_str = exit_price if exit_price else "—"
+
+            sum_usd = entry_price * amount if entry_price else None
+            sum_str = f"{sum_usd:.2f}$" if sum_usd is not None else "—"
 
             if entry_price and exit_price:
                 profit = (exit_price - entry_price) * amount
                 profit_pct = (exit_price - entry_price) / entry_price * 100
-                fee = fee_rate * amount * (entry_price + exit_price)
-                profit_str = f"~{profit:+.2f} {q} ({profit_pct:+.2f}%)"
-                fee_str = f"~{fee:.2f} {q}"
+                profit_str = f"{profit:+.2f}$ ({profit_pct:+.2f}%)"
             else:
-                profit_str = "— (нет уровня для цикла)"
-                fee_str = "—"
+                profit_str = "—"
 
-            emoji = "🟢" if lvl.side == "buy" else "🔴"
             lines.append(
-                f"{emoji} Сетка #{i}\n"
-                f"Сработает: {trigger_note}\n"
-                f"Вход: {entry_price if entry_price else '—'} → Выход: {exit_price if exit_price else '—'}\n"
-                f"Объём: {amount} {b} ({sum_str})\n"
-                f"Профит: {profit_str}\n"
-                f"Комиссия: {fee_str}"
+                f"{num} {icon} {lvl.side.upper()}: {lvl.price} ✅ → Цель: {target_str}\n"
+                f"    💵 {sum_str} ({amount} {b}) · Профит: {profit_str}"
             )
 
-        text = "\n\n".join(lines) if lines else "Нет открытых ордеров"
-        text += f"\n\nСвободных уровней: {free_count} / {len(levels)}"
+        lines.append(f"\nСвободных уровней: {free_count} / {len(levels)}")
 
+        text = "\n".join(lines)
         # Telegram режет сообщения длиннее ~4096 символов — на всякий случай бьём на части
         for chunk_start in range(0, len(text), 3800):
             await message.answer(text[chunk_start:chunk_start + 3800])
