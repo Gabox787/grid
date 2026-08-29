@@ -18,6 +18,7 @@ import logging
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 
 logger = logging.getLogger("telegram_bot")
 
@@ -63,6 +64,7 @@ HELP_TEXT = (
     "🤖 Grid Bot — команды:\n"
     "/status — общая сводка (цена, статус, бюджет, профит)\n"
     "/grid — какие уровни сетки заняты, какие свободны\n"
+    "/positions — открытые позиции: цена входа, цель, живой PnL, сколько времени открыта\n"
     "/trades [N] — последние N сделок (по умолчанию 10)\n"
     "/pnl — профит, комиссии, ROI, винрейт\n"
     "/fees — суммарные комиссии\n"
@@ -217,6 +219,64 @@ async def create_and_run(grid_bot, db_module):
 
         text = "\n".join(lines)
         # Telegram режет сообщения длиннее ~4096 символов — на всякий случай бьём на части
+        for chunk_start in range(0, len(text), 3800):
+            await message.answer(text[chunk_start:chunk_start + 3800])
+
+    @dp.message(Command("positions"))
+    async def cmd_positions(message: Message):
+        if not await _guard(message):
+            return
+        q = grid_bot.quote_currency
+        b = grid_bot.base_currency
+        price = grid_bot.state.current_price
+        fee_rate = grid_bot.fee_rate_pct
+
+        # "Позиция" — это купленный, ещё не проданный объём: занятые Sell-уровни
+        # (для них entry_price = по какой цене реально куплено, lvl.price = цена, по которой ждёт продажи).
+        positions = [lvl for lvl in grid_bot.levels if lvl.side == "sell"]
+        if not positions:
+            await message.answer("Открытых позиций нет")
+            return
+
+        now = datetime.now(timezone.utc)
+        total_unrealized = 0.0
+        blocks = []
+
+        for lvl in positions:
+            amount = lvl.amount or 0
+            entry_price = lvl.entry_price
+            target_price = lvl.price
+
+            if entry_price and price is not None:
+                unrealized = (price - entry_price) * amount
+                unrealized_pct = (price - entry_price) / entry_price * 100
+                total_unrealized += unrealized
+                pnl_str = f"{unrealized:+.4f} {q} ({unrealized_pct:+.2f}%)"
+            else:
+                pnl_str = "—"
+
+            if lvl.entry_time:
+                duration_str = _fmt_uptime((now - lvl.entry_time).total_seconds())
+                opened_str = lvl.entry_time.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                duration_str = "—"
+                opened_str = "—"
+
+            fee_in = fee_rate * (entry_price or 0) * amount
+            fee_out = fee_rate * target_price * amount
+
+            blocks.append(
+                f"📊 Ур.{lvl.index}\n"
+                f"💲 Куплено: {entry_price if entry_price else '—'} · Объём: {amount} {b}\n"
+                f"🎯 Ждёт продажи: {target_price}\n"
+                f"📈 Текущий PnL: {pnl_str}\n"
+                f"⏱ Открыта: {duration_str} назад ({opened_str} UTC)\n"
+                f"💰 Комиссия: вход ~{fee_in:.4f} {q} · выход (оценка) ~{fee_out:.4f} {q}"
+            )
+
+        header = f"📦 Открытых позиций: {len(positions)} · Суммарный нереализованный PnL: {total_unrealized:+.4f} {q}"
+        text = header + "\n\n" + "\n\n".join(blocks)
+
         for chunk_start in range(0, len(text), 3800):
             await message.answer(text[chunk_start:chunk_start + 3800])
 
