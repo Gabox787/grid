@@ -65,6 +65,7 @@ class GridLevel:
     side: Optional[str] = None            # "buy" | "sell" | None (уровень свободен)
     order_id: Optional[str] = None
     entry_price: Optional[float] = None   # цена покупки — нужна для расчёта профита при продаже
+    entry_time: Optional[datetime] = None  # когда открылась позиция — для "сколько времени открыта"
     amount: Optional[float] = None        # объём в базовой валюте, зафиксированный при открытии ордера
 
 
@@ -329,6 +330,7 @@ class GridBot:
                     level.order_id = order_id
                     level.amount = zone_qty
                     level.entry_price = current_price  # приблизительная точка отсчёта для профита
+                    level.entry_time = datetime.now(timezone.utc)
 
         await self._persist_full_state()
         logger.info(f"Сетка инициализирована. Текущая цена: {current_price}")
@@ -417,7 +419,7 @@ class GridBot:
         levels = [
             GridLevel(
                 index=r["idx"], price=r["price"], side=r["side"], order_id=r["order_id"],
-                entry_price=r["entry_price"], amount=r["amount"],
+                entry_price=r["entry_price"], entry_time=r.get("entry_time"), amount=r["amount"],
             )
             for r in rows
         ]
@@ -490,9 +492,11 @@ class GridBot:
         time_str = ev["time"].strftime("%Y-%m-%d %H:%M:%S")
 
         if ev["type"] == "buy":
+            target_line = f"🎯 Цель продажи: {ev['target_price']}\n" if ev.get("target_price") else ""
             return (
                 f"📉 ВХОД BUY ур.{ev['index']}/{ev['grid_size'] - 1}\n"
                 f"💲 Цена: {ev['price']}\n"
+                f"{target_line}"
                 f"💵 Сумма: {sum_usd:.2f} {q} ({ev['amount']} {b})\n"
                 f"💰 Комиссия: ~{ev['fee']:.4f} {q}\n"
                 f"🕐 {time_str} UTC"
@@ -532,10 +536,12 @@ class GridBot:
                 level.side = None
                 level.order_id = None
                 level.entry_price = None
+                level.entry_time = None
                 level.amount = None
                 await db.save_level(level)
                 await db.log_trade(self.symbol, "buy", index, fill_price, amount, None, fee, self.dry_run)
 
+                target_price = None
                 next_index = index + 1
                 if next_index < len(self.levels) and not self.paused:
                     next_level = self.levels[next_index]
@@ -544,8 +550,10 @@ class GridBot:
                         next_level.side = "sell"
                         next_level.order_id = order_id
                         next_level.entry_price = bought_price
+                        next_level.entry_time = datetime.now(timezone.utc)
                         next_level.amount = amount
                         await db.save_level(next_level)
+                        target_price = next_level.price
 
                 self.state.trades_completed += 1
                 await self._persist_counters()
@@ -554,6 +562,7 @@ class GridBot:
                 event = {
                     "type": "buy", "index": index, "grid_size": grid_size,
                     "price": fill_price, "amount": amount, "fee": fee,
+                    "target_price": target_price,
                     "time": datetime.now(timezone.utc),
                 }
                 if events is not None:
@@ -579,6 +588,7 @@ class GridBot:
                 level.side = None
                 level.order_id = None
                 level.entry_price = None
+                level.entry_time = None
                 level.amount = None
                 await db.save_level(level)
                 await db.log_trade(self.symbol, "sell", index, sell_price, amount, profit, fee, self.dry_run)
