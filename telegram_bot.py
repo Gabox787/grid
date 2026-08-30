@@ -185,10 +185,11 @@ async def create_and_run(grid_bot, db_module):
         if price is not None:
             nearest = min(occupied, key=lambda e: abs(price - e[1].price))
             i, lvl, entry_price, exit_price, amount = nearest
+            display_i = lvl.origin_index if (lvl.side == "sell" and lvl.origin_index is not None) else i
             remaining = (price - lvl.price) if lvl.side == "buy" else (lvl.price - price)
             icon = "📉" if lvl.side == "buy" else "📈"
             lines.append(
-                f"{icon} {lvl.side.upper()} ур.{i}\n"
+                f"{icon} {lvl.side.upper()} ур.{display_i}\n"
                 f"💲 Цена: {lvl.price}\n"
                 f"🎯 Цель: {exit_price if exit_price else '—'}\n"
                 f"💰 Остаток: {abs(remaining):.2f}$\n"
@@ -246,6 +247,7 @@ async def create_and_run(grid_bot, db_module):
             amount = lvl.amount or 0
             entry_price = lvl.entry_price
             target_price = lvl.price
+            display_index = lvl.origin_index if lvl.origin_index is not None else lvl.index
 
             if entry_price and price is not None:
                 unrealized = (price - entry_price) * amount
@@ -266,7 +268,7 @@ async def create_and_run(grid_bot, db_module):
             fee_out = fee_rate * target_price * amount
 
             blocks.append(
-                f"📊 Ур.{lvl.index}\n"
+                f"📊 Ур.{display_index}\n"
                 f"💲 Куплено: {entry_price if entry_price else '—'} · Объём: {amount} {b}\n"
                 f"🎯 Ждёт продажи: {target_price}\n"
                 f"📈 Текущий PnL: {pnl_str}\n"
