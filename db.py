@@ -51,6 +51,7 @@ async def init():
                 order_id TEXT,
                 entry_price DOUBLE PRECISION,
                 entry_time TIMESTAMPTZ,
+                origin_index INTEGER,
                 amount DOUBLE PRECISION,
                 updated_at TIMESTAMPTZ DEFAULT now()
             )
@@ -78,6 +79,7 @@ async def init():
         # На случай апгрейда существующей БД без новых колонок
         await conn.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION")
         await conn.execute("ALTER TABLE grid_levels ADD COLUMN IF NOT EXISTS entry_time TIMESTAMPTZ")
+        await conn.execute("ALTER TABLE grid_levels ADD COLUMN IF NOT EXISTS origin_index INTEGER")
     logger.info("Подключение к БД установлено, таблицы готовы")
 
 
@@ -110,18 +112,19 @@ async def save_level(level) -> None:
         async with _pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO grid_levels (idx, price, side, order_id, entry_price, entry_time, amount, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+                INSERT INTO grid_levels (idx, price, side, order_id, entry_price, entry_time, origin_index, amount, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
                 ON CONFLICT (idx) DO UPDATE SET
                     side = EXCLUDED.side,
                     order_id = EXCLUDED.order_id,
                     entry_price = EXCLUDED.entry_price,
                     entry_time = EXCLUDED.entry_time,
+                    origin_index = EXCLUDED.origin_index,
                     amount = EXCLUDED.amount,
                     updated_at = now()
                 """,
                 level.index, level.price, level.side, level.order_id, level.entry_price,
-                getattr(level, "entry_time", None), level.amount,
+                getattr(level, "entry_time", None), getattr(level, "origin_index", None), level.amount,
             )
     except Exception as e:
         logger.error(f"Ошибка сохранения уровня {level.index} в БД: {e}")
@@ -132,7 +135,8 @@ async def load_levels() -> list[dict]:
         return []
     async with _pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT idx, price, side, order_id, entry_price, entry_time, amount FROM grid_levels ORDER BY idx"
+            "SELECT idx, price, side, order_id, entry_price, entry_time, origin_index, amount "
+            "FROM grid_levels ORDER BY idx"
         )
         return [dict(r) for r in rows]
 
