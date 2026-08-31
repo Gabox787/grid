@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEDERIS — косметологическая клиника Ольги Лукиной, Киев</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream:   '#F7F2EA',
+          cream2:  '#EFE6D8',
+          ink:     '#2B2620',
+          terra:   '#C08A6B',
+          gold:    '#B08D57',
+          line:    '#DCC9B6',
+          dark:    '#211D18'
+        },
+        fontFamily: {
+          display: ['"Cormorant Garamond"', 'serif'],
+          body: ['"Jost"', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { background: #F7F2EA; color: #2B2620; font-family: 'Jost', sans-serif; }
+  .font-display { font-family: 'Cormorant Garamond', serif; }
+  ::selection { background: #C08A6B; color: #F7F2EA; }
+
+  .eyebrow { letter-spacing: 0.28em; text-transform: uppercase; font-size: 0.72rem; font-weight: 500; }
+
+  /* custom lens cursor */
+  .cursor-dot, .cursor-lens {
+    position: fixed; top: 0; left: 0; pointer-events: none; z-index: 70;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-dot { width: 7px; height: 7px; border-radius: 999px; background: #B08D57; opacity: 0.7; }
+  .cursor-lens {
+    width: 150px; height: 150px; border-radius: 999px; overflow: hidden;
+    background-size: cover; background-position: center;
+    border: 1px solid rgba(176,141,87,0.5);
+    box-shadow: 0 20px 40px rgba(43,38,32,0.25);
+    opacity: 0; transform: translate(-50%,-50%) scale(0.4);
+  }
+  @media (hover: none) { .cursor-dot, .cursor-lens { display: none; } }
+
+  .reveal-line { position: relative; overflow: hidden; }
+  .reveal-line span { display: block; transform: translateY(110%); }
+
+  .divider { height: 1px; background: #DCC9B6; }
+
+  input[type="checkbox"] { accent-color: #C08A6B; }
+
+  .lens-hover, .lens-hover a { cursor: none; }
+  @media (hover: none) { .lens-hover, .lens-hover a { cursor: auto; } }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  :focus-visible { outline: 2px solid #C08A6B; outline-offset: 3px; }
+</style>
+</head>
+<body class="antialiased overflow-x-hidden">
+
+<!-- custom cursor -->
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-lens" id="cursorLens"></div>
+
+<!-- ============ NAV ============ -->
+<header id="siteNav" class="fixed top-0 left-0 w-full z-50 transition-colors duration-500">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 h-20 flex items-center justify-between">
+    <a href="#hero" class="font-display text-2xl tracking-wide">MEDERIS</a>
+    <nav class="hidden md:flex items-center gap-9 eyebrow">
+      <a href="#doctor" class="hover:text-terra transition-colors">О враче</a>
+      <a href="#services" class="hover:text-terra transition-colors">Услуги</a>
+      <a href="#gallery" class="hover:text-terra transition-colors">Результаты</a>
+      <a href="#reviews" class="hover:text-terra transition-colors">Отзывы</a>
+      <a href="#contacts" class="hover:text-terra transition-colors">Контакты</a>
+    </nav>
+    <a href="#booking" class="hidden md:inline-block eyebrow border border-ink px-5 py-3 hover:bg-ink hover:text-cream transition-colors">Записаться</a>
+    <a href="#booking" class="md:hidden eyebrow border border-ink px-4 py-2">Запись</a>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section id="hero" class="relative h-screen min-h-[680px] w-full overflow-hidden bg-cream2">
+  <div class="parallax-layer absolute inset-0" data-speed="0.15">
+    <img src="https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=1600&auto=format&fit=crop&q=80"
+         onerror="this.style.display='none'"
+         class="w-full h-full object-cover opacity-90" alt="">
+    <div class="absolute inset-0 bg-gradient-to-r from-cream via-cream/70 to-transparent"></div>
+  </div>
+
+  <div class="parallax-layer absolute -right-24 -top-24 w-[560px] h-[560px] rounded-full bg-gradient-to-br from-terra/25 to-gold/10 blur-3xl" data-speed="-0.3"></div>
+  <div class="parallax-layer absolute right-16 bottom-10 w-72 h-72 rounded-full border border-gold/40" data-speed="0.4"></div>
+
+  <div class="relative z-10 max-w-7xl mx-auto h-full px-6 md:px-10 flex items-center">
+    <div class="max-w-xl">
+      <p class="eyebrow text-terra mb-6">Косметологическая клиника · Киев</p>
+      <h1 class="font-display text-[15vw] md:text-7xl leading-[0.95] mb-8">
+        Кожа,<br>которой<br><span class="italic text-terra">доверяют</span><br>годами
+      </h1>
+      <p class="text-ink/70 text-lg leading-relaxed mb-10 max-w-md">
+        Врач-косметолог Ольга Лукина и её команда — там, где решают проблему,
+        а не продают процедуру. Пациентки возвращаются по 10–15 лет подряд.
+      </p>
+      <div class="flex items-center gap-8">
+        <a href="#booking" class="eyebrow bg-ink text-cream px-8 py-4 hover:bg-terra transition-colors">Записаться на консультацию</a>
+        <a href="#doctor" class="eyebrow border-b border-ink pb-1 hover:text-terra hover:border-terra transition-colors">Узнать больше</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-ink/50">
+    <span class="eyebrow text-[10px]">Листайте</span>
+    <div class="w-px h-10 bg-ink/30"></div>
+  </div>
+</section>
+
+<!-- ============ TRUST STRIP / COUNTERS ============ -->
+<section class="bg-ink text-cream py-14">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+    <div>
+      <p class="font-display text-5xl md:text-6xl text-terra"><span class="counter" data-target="4.8" data-decimal="1">0</span></p>
+      <p class="eyebrow mt-3 text-cream/60">Рейтинг Google</p>
+    </div>
+    <div>
+      <p class="font-display text-5xl md:text-6xl text-terra"><span class="counter" data-target="42">0</span></p>
+      <p class="eyebrow mt-3 text-cream/60">Отзывов клиенток</p>
+    </div>
+    <div>
+      <p class="font-display text-5xl md:text-6xl text-terra">
+        <span class="counter" data-target="15">0</span><span class="text-3xl align-top">+</span>
+      </p>
+      <p class="eyebrow mt-3 text-cream/60">Лет практики Ольги</p>
+    </div>
+    <div>
+      <p class="font-display text-5xl md:text-6xl text-terra"><span class="counter" data-target="3">0</span></p>
+      <p class="eyebrow mt-3 text-cream/60">Направления в клинике</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ О ВРАЧЕ ============ -->
+<section id="doctor" class="max-w-7xl mx-auto px-6 md:px-10 py-28 md:py-36 grid md:grid-cols-2 gap-16 items-center">
+  <div class="relative lens-hover" data-lens="https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=900&auto=format&fit=crop&q=80">
+    <div class="aspect-[4/5] bg-gradient-to-br from-gold/30 to-terra/20 overflow-hidden">
+      <img src="https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=900&auto=format&fit=crop&q=80"
+           onerror="this.style.display='none'" class="w-full h-full object-cover" alt="Ольга Лукина, врач-косметолог">
+    </div>
+    <div class="absolute -bottom-8 -right-8 bg-cream border border-line px-8 py-6 hidden sm:block">
+      <p class="font-display italic text-2xl text-terra">«Работаю без конвейера»</p>
+    </div>
+  </div>
+  <div>
+    <p class="eyebrow text-terra mb-5">Основатель клиники</p>
+    <h2 class="font-display text-4xl md:text-5xl mb-7 leading-tight">Ольга Лукина</h2>
+    <p class="text-ink/75 leading-relaxed mb-5">
+      К Ольге приходят не за разовой процедурой, а выстраивают многолетние отношения:
+      клиентки рассказывают, что доверяют ей свою красоту уже 10, 15, а иногда и 20 лет —
+      и ни разу не пожалели.
+    </p>
+    <p class="text-ink/75 leading-relaxed mb-9">
+      Отдельное направление — лечение акне и постакне. Именно этим объясняются самые
+      эмоциональные истории клиенток: «наконец-то вижу себя в зеркале без прыщей».
+      Ольга подробно объясняет каждый этап и подбирает терапию под конкретную кожу,
+      а не общий протокол.
+    </p>
+    <div class="grid grid-cols-2 gap-6">
+      <div class="border-t border-line pt-4">
+        <p class="font-display text-lg">Индивидуальный подход</p>
+        <p class="text-sm text-ink/60 mt-1">План лечения под вашу кожу, а не шаблон</p>
+      </div>
+      <div class="border-t border-line pt-4">
+        <p class="font-display text-lg">Врачебная точность</p>
+        <p class="text-sm text-ink/60 mt-1">Косметология на стыке с дерматологией</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ БОЛЬ → РЕШЕНИЕ ============ -->
+<section class="bg-cream2 py-28 md:py-36">
+  <div class="max-w-7xl mx-auto px-6 md:px-10">
+    <p class="eyebrow text-terra mb-5">С чем к нам приходят</p>
+    <h2 class="font-display text-4xl md:text-5xl max-w-2xl mb-16 leading-tight">Расскажите, что беспокоит —<br>мы подберём решение</h2>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-line">
+      <div class="lens-hover bg-cream2 p-8 hover:bg-cream transition-colors" data-lens="https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?w=700&auto=format&fit=crop&q=80">
+        <p class="font-display text-3xl mb-4">01</p>
+        <p class="font-display text-xl mb-3">Акне и высыпания</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Комплексная терапия воспалений и постакне без пересушивания кожи.</p>
+      </div>
+      <div class="lens-hover bg-cream2 p-8 hover:bg-cream transition-colors" data-lens="https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?w=700&auto=format&fit=crop&q=80">
+        <p class="font-display text-3xl mb-4">02</p>
+        <p class="font-display text-xl mb-3">Возрастные изменения</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Уход и массаж лица, возвращающие коже тонус и сияние.</p>
+      </div>
+      <div class="lens-hover bg-cream2 p-8 hover:bg-cream transition-colors" data-lens="https://images.unsplash.com/photo-1571875257727-256c39da42af?w=700&auto=format&fit=crop&q=80">
+        <p class="font-display text-3xl mb-4">03</p>
+        <p class="font-display text-xl mb-3">Нежелательные волосы</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Лазерная эпиляция без пропущенных зон и вросших волосков.</p>
+      </div>
+      <div class="lens-hover bg-cream2 p-8 hover:bg-cream transition-colors" data-lens="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=700&auto=format&fit=crop&q=80">
+        <p class="font-display text-3xl mb-4">04</p>
+        <p class="font-display text-xl mb-3">Напряжение и зажимы</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Массаж тела для тех, чья работа держит спину и шею в тонусе.</p>
+      </div>
+    </div>
+    <p class="text-xs text-ink/40 mt-6">Наведите курсор на карточку, чтобы увидеть пример</p>
+  </div>
+</section>
+
+<!-- ============ УСЛУГИ ============ -->
+<section id="services" class="max-w-7xl mx-auto px-6 md:px-10 py-28 md:py-36">
+  <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
+    <div>
+      <p class="eyebrow text-terra mb-5">Что мы делаем</p>
+      <h2 class="font-display text-4xl md:text-5xl leading-tight">Услуги клиники</h2>
+    </div>
+    <p class="text-ink/60 max-w-sm">Точную стоимость и план процедур определяет врач на консультации — кожа у каждой пациентки своя.</p>
+  </div>
+
+  <div class="divide-y divide-line border-t border-b border-line">
+    <div class="lens-hover group flex items-center justify-between py-8 md:py-10" data-lens="https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?w=700&auto=format&fit=crop&q=80">
+      <p class="font-display text-2xl md:text-4xl group-hover:text-terra group-hover:italic transition-all">Косметология и лечение акне</p>
+      <p class="eyebrow text-ink/40 whitespace-nowrap ml-6">от 900 ₴</p>
+    </div>
+    <div class="lens-hover group flex items-center justify-between py-8 md:py-10" data-lens="https://images.unsplash.com/photo-1571875257727-256c39da42af?w=700&auto=format&fit=crop&q=80">
+      <p class="font-display text-2xl md:text-4xl group-hover:text-terra group-hover:italic transition-all">Лазерная эпиляция</p>
+      <p class="eyebrow text-ink/40 whitespace-nowrap ml-6">от 600 ₴</p>
+    </div>
+    <div class="lens-hover group flex items-center justify-between py-8 md:py-10" data-lens="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=700&auto=format&fit=crop&q=80">
+      <p class="font-display text-2xl md:text-4xl group-hover:text-terra group-hover:italic transition-all">Массаж лица и тела</p>
+      <p class="eyebrow text-ink/40 whitespace-nowrap ml-6">от 800 ₴</p>
+    </div>
+    <div class="lens-hover group flex items-center justify-between py-8 md:py-10" data-lens="https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=700&auto=format&fit=crop&q=80">
+      <p class="font-display text-2xl md:text-4xl group-hover:text-terra group-hover:italic transition-all">Пилинги и уходовые чистки</p>
+      <p class="eyebrow text-ink/40 whitespace-nowrap ml-6">от 900 ₴</p>
+    </div>
+    <div class="lens-hover group flex items-center justify-between py-8 md:py-10" data-lens="https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?w=700&auto=format&fit=crop&q=80">
+      <p class="font-display text-2xl md:text-4xl group-hover:text-terra group-hover:italic transition-all">Шугаринг</p>
+      <p class="eyebrow text-ink/40 whitespace-nowrap ml-6">от 400 ₴</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SIGNATURE: PINNED TRANSFORMATION ============ -->
+<section id="transform" class="relative h-screen w-full overflow-hidden bg-dark text-cream">
+  <div class="absolute inset-0">
+    <img src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1600&auto=format&fit=crop&q=80"
+         onerror="this.style.display='none'" class="w-full h-full object-cover opacity-50" alt="Матовая кожа, состояние до">
+  </div>
+  <div id="afterLayer" class="absolute inset-0" style="clip-path: inset(0 0 0 100%);">
+    <img src="https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=1600&auto=format&fit=crop&q=80"
+         onerror="this.style.display='none'" class="w-full h-full object-cover" alt="Сияющая кожа, состояние после">
+    <div class="absolute inset-0 bg-gradient-to-t from-dark/70 via-transparent to-transparent"></div>
+  </div>
+
+  <div id="divider" class="absolute top-0 bottom-0 w-px bg-gold/70" style="left:0%;">
+    <div class="absolute top-1/2 -translate-y-1/2 -left-4 w-8 h-8 rounded-full border border-gold/80 bg-dark/60 backdrop-blur"></div>
+  </div>
+
+  <div class="relative z-10 max-w-7xl mx-auto h-full px-6 md:px-10 flex flex-col justify-between py-16 md:py-24">
+    <div class="max-w-lg">
+      <p class="eyebrow text-gold mb-5">Путь кожи</p>
+      <h2 class="font-display text-4xl md:text-6xl leading-tight">Матовость уходит.<br>Сияние остаётся.</h2>
+    </div>
+    <div class="flex items-end justify-between">
+      <p class="text-cream/60 max-w-xs">Продолжайте прокручивать — состояние кожи меняется вместе со скроллом,
+      как и результат курса процедур.</p>
+      <p id="transformPct" class="font-display text-7xl md:text-9xl text-gold leading-none">0%</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ГАЛЕРЕЯ ============ -->
+<section id="gallery" class="max-w-7xl mx-auto px-6 md:px-10 py-28 md:py-36">
+  <p class="eyebrow text-terra mb-5">Наведите и двигайте курсор</p>
+  <h2 class="font-display text-4xl md:text-5xl mb-4 leading-tight">Результаты по направлениям</h2>
+  <p class="text-ink/60 max-w-lg mb-12">Изображения иллюстративные — реальные результаты обсуждаются на консультации.</p>
+
+  <div class="flex flex-wrap gap-3 mb-12" id="galleryFilters">
+    <button data-filter="all" class="filter-btn eyebrow px-5 py-2 border border-ink bg-ink text-cream">Все</button>
+    <button data-filter="acne" class="filter-btn eyebrow px-5 py-2 border border-ink hover:bg-ink hover:text-cream transition-colors">Акне</button>
+    <button data-filter="epil" class="filter-btn eyebrow px-5 py-2 border border-ink hover:bg-ink hover:text-cream transition-colors">Эпиляция</button>
+    <button data-filter="massage" class="filter-btn eyebrow px-5 py-2 border border-ink hover:bg-ink hover:text-cream transition-colors">Массаж</button>
+  </div>
+
+  <div id="galleryGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="acne">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: воспалённая кожа">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: чистая кожа">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Лечение акне</p>
+      </div>
+    </div>
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="epil">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: эпиляция">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1552693673-1bf958298935?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: гладкая кожа">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Лазерная эпиляция</p>
+      </div>
+    </div>
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="massage">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1591343395082-e120087004b4?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: напряжение">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: расслабление">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Массаж</p>
+      </div>
+    </div>
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="acne">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: пигментация">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: ровный тон">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Уход и пилинги</p>
+      </div>
+    </div>
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="epil">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1598440947619-2c35bc9df9c8?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: эпиляция ног">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: гладкие ноги">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Шугаринг</p>
+      </div>
+    </div>
+    <div class="reveal-card relative aspect-[4/5] overflow-hidden bg-ink" data-cat="massage">
+      <img class="absolute inset-0 w-full h-full object-cover" src="https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="До: усталая кожа">
+      <img class="after-img absolute inset-0 w-full h-full object-cover" style="clip-path: inset(0 0 0 100%);" src="https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=800&auto=format&fit=crop&q=80" onerror="this.style.display='none'" alt="После: свежий вид">
+      <div class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-ink/80 to-transparent">
+        <p class="eyebrow text-cream">Уход за лицом</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ КОМАНДА ============ -->
+<section class="bg-cream2 py-28 md:py-36">
+  <div class="max-w-7xl mx-auto px-6 md:px-10">
+    <p class="eyebrow text-terra mb-5">Команда</p>
+    <h2 class="font-display text-4xl md:text-5xl mb-16 leading-tight">Специалисты, которых рекомендуют</h2>
+    <div class="grid md:grid-cols-3 gap-10">
+      <div>
+        <div class="aspect-square bg-gradient-to-br from-terra/20 to-gold/10 mb-6 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=600&auto=format&fit=crop&q=80" onerror="this.style.display='none'" class="w-full h-full object-cover" alt="Наталья, массажист">
+        </div>
+        <p class="font-display text-2xl mb-2">Наталья</p>
+        <p class="eyebrow text-terra mb-3">Массаж тела и лица</p>
+        <p class="text-sm text-ink/60 leading-relaxed">«Изящная, внимательная, снимает зажимы после сидячей работы» — из отзывов клиенток.</p>
+      </div>
+      <div>
+        <div class="aspect-square bg-gradient-to-br from-terra/20 to-gold/10 mb-6 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&auto=format&fit=crop&q=80" onerror="this.style.display='none'" class="w-full h-full object-cover" alt="Валентина, мастер эпиляции">
+        </div>
+        <p class="font-display text-2xl mb-2">Валентина</p>
+        <p class="eyebrow text-terra mb-3">Лазерная эпиляция</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Тщательно проходит все зоны — ни одной пропущенной волосинки, отмечают клиентки.</p>
+      </div>
+      <div>
+        <div class="aspect-square bg-gradient-to-br from-terra/20 to-gold/10 mb-6 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1552693673-1bf958298935?w=600&auto=format&fit=crop&q=80" onerror="this.style.display='none'" class="w-full h-full object-cover" alt="Ирина, мастер шугаринга">
+        </div>
+        <p class="font-display text-2xl mb-2">Ирина</p>
+        <p class="eyebrow text-terra mb-3">Шугаринг</p>
+        <p class="text-sm text-ink/60 leading-relaxed">Профессионал своего дела в приятной, доброй атмосфере.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ОТЗЫВЫ ============ -->
+<section id="reviews" class="max-w-7xl mx-auto px-6 md:px-10 py-28 md:py-36">
+  <div class="flex items-end justify-between mb-16 flex-wrap gap-4">
+    <div>
+      <p class="eyebrow text-terra mb-5">Google Карты</p>
+      <h2 class="font-display text-4xl md:text-5xl leading-tight">4,8 из 5 — 42 отзыва</h2>
+    </div>
+  </div>
+  <div class="grid md:grid-cols-3 gap-px bg-line">
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«Наконец-то настал тот день, когда ты видишь себя в зеркале без прыщей и угрей —
+      и это всё благодаря Ольге Лукиной. Кожа выглядит лучше, чем в 20 лет».</p>
+      <p class="eyebrow text-ink/40">Марина Г.</p>
+    </div>
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«Знаю Ольгу с 2005 года. Она мой неизменный косметолог во всех вопросах — от простых
+      до самых сложных. Всегда рекомендую её друзьям и коллегам».</p>
+      <p class="eyebrow text-ink/40">Марина Т.</p>
+    </div>
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«Мастер лазерной эпиляции Валентина всё тщательно проходит, не пропускает участки.
+      Очень довольна результатом».</p>
+      <p class="eyebrow text-ink/40">Татьяна Д.</p>
+    </div>
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«Проблема сидячей работы для меня актуальна — зажимы шейного отдела просто кричали.
+      Массаж у Натальи снял напряжение полностью».</p>
+      <p class="eyebrow text-ink/40">Наталия Є.</p>
+    </div>
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«Пользуюсь услугами косметолога Ольги уже 15 лет — попала в правильные руки.
+      Она постоянно учится, поэтому услуги современные и результативные».</p>
+      <p class="eyebrow text-ink/40">Алла С.</p>
+    </div>
+    <div class="bg-cream p-8">
+      <p class="text-terra mb-4">★★★★★</p>
+      <p class="text-ink/75 leading-relaxed mb-6">«После двух визитов на чистку значительно улучшилась ситуация с высыпаниями.
+      Доктор подробно объяснила, как ухаживать за кожей дальше».</p>
+      <p class="eyebrow text-ink/40">netNekit</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ КАЛЬКУЛЯТОР ============ -->
+<section class="bg-ink text-cream py-28 md:py-36">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 grid lg:grid-cols-2 gap-16">
+    <div>
+      <p class="eyebrow text-gold mb-5">Ориентировочный расчёт</p>
+      <h2 class="font-display text-4xl md:text-5xl mb-7 leading-tight">Что вас беспокоит?</h2>
+      <p class="text-cream/60 leading-relaxed mb-10 max-w-md">Отметьте один или несколько пунктов — покажем возможные направления
+      и ориентировочную стоимость. Точный план составит врач на консультации.</p>
+
+      <div class="space-y-4" id="calcOptions">
+        <label class="flex items-center gap-4 cursor-pointer group">
+          <input type="checkbox" class="calc-check w-5 h-5" value="acne">
+          <span class="group-hover:text-gold transition-colors">Акне, высыпания, постакне</span>
+        </label>
+        <label class="flex items-center gap-4 cursor-pointer group">
+          <input type="checkbox" class="calc-check w-5 h-5" value="age">
+          <span class="group-hover:text-gold transition-colors">Возрастные изменения кожи</span>
+        </label>
+        <label class="flex items-center gap-4 cursor-pointer group">
+          <input type="checkbox" class="calc-check w-5 h-5" value="hair">
+          <span class="group-hover:text-gold transition-colors">Нежелательные волосы</span>
+        </label>
+        <label class="flex items-center gap-4 cursor-pointer group">
+          <input type="checkbox" class="calc-check w-5 h-5" value="tension">
+          <span class="group-hover:text-gold transition-colors">Напряжение тела, зажимы</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="bg-cream text-ink p-8 md:p-10 self-start">
+      <p class="eyebrow text-terra mb-6">Рекомендуемые направления</p>
+      <div id="calcResults" class="space-y-4 mb-8 min-h-[80px]">
+        <p class="text-ink/40 text-sm">Отметьте пункты слева, чтобы увидеть рекомендации</p>
+      </div>
+      <div class="divider mb-6"></div>
+      <div class="flex items-center justify-between mb-8">
+        <span class="eyebrow">Ориентировочно от</span>
+        <span id="calcTotal" class="font-display text-4xl text-terra">0 ₴</span>
+      </div>
+      <a href="#booking" class="block text-center eyebrow bg-ink text-cream px-8 py-4 hover:bg-terra transition-colors">Записаться на консультацию</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ЗАПИСЬ ============ -->
+<section id="booking" class="max-w-5xl mx-auto px-6 md:px-10 py-28 md:py-36">
+  <p class="eyebrow text-terra mb-5 text-center">Запись онлайн</p>
+  <h2 class="font-display text-4xl md:text-5xl mb-16 text-center leading-tight">Выберите удобное время</h2>
+
+  <div class="grid md:grid-cols-2 gap-10 mb-12">
+    <div>
+      <p class="eyebrow text-ink/50 mb-4">Услуга</p>
+      <select id="bookService" class="w-full bg-transparent border border-line px-4 py-3 eyebrow focus:border-terra outline-none">
+        <option>Косметология / лечение акне</option>
+        <option>Лазерная эпиляция</option>
+        <option>Массаж</option>
+        <option>Пилинги и чистки</option>
+        <option>Шугаринг</option>
+      </select>
+    </div>
+    <div>
+      <p class="eyebrow text-ink/50 mb-4">Специалист</p>
+      <select id="bookMaster" class="w-full bg-transparent border border-line px-4 py-3 eyebrow focus:border-terra outline-none">
+        <option>Ольга Лукина</option>
+        <option>Наталья</option>
+        <option>Валентина</option>
+        <option>Ирина</option>
+      </select>
+    </div>
+  </div>
+
+  <p class="eyebrow text-ink/50 mb-4">День</p>
+  <div class="flex flex-wrap gap-3 mb-10" id="bookDays"></div>
+
+  <p class="eyebrow text-ink/50 mb-4">Время</p>
+  <div class="flex flex-wrap gap-3 mb-12" id="bookSlots"></div>
+
+  <div class="flex flex-col sm:flex-row items-center gap-6 justify-between border-t border-line pt-10">
+    <p id="bookSummary" class="text-ink/60 text-sm max-w-md">Выберите день и время, чтобы продолжить.</p>
+    <button id="bookSubmit" class="eyebrow bg-ink text-cream px-10 py-4 hover:bg-terra transition-colors whitespace-nowrap">Подтвердить запись</button>
+  </div>
+  <p id="bookConfirm" class="hidden mt-6 text-terra eyebrow text-center">Заявка принята — администратор перезвонит для подтверждения.</p>
+</section>
+
+<!-- ============ КОНТАКТЫ ============ -->
+<section id="contacts" class="bg-cream2 py-28 md:py-36">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 grid md:grid-cols-2 gap-16">
+    <div>
+      <p class="eyebrow text-terra mb-5">Где мы находимся</p>
+      <h2 class="font-display text-4xl md:text-5xl mb-10 leading-tight">Рядом с метро,<br>в двух шагах от дома</h2>
+      <div class="space-y-6 text-ink/75">
+        <p>вул. Раїси Окіпної, 4Б, 2-й этаж, каб. 20<br>Киев, 02002</p>
+        <p>Ежедневно, до 21:00</p>
+        <p>097 901 4040</p>
+      </div>
+      <a href="#booking" class="inline-block mt-10 eyebrow border-b border-ink pb-1 hover:text-terra hover:border-terra transition-colors">Записаться на визит</a>
+    </div>
+    <div class="aspect-[4/3] bg-ink relative overflow-hidden flex items-center justify-center">
+      <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(circle, #B08D57 1px, transparent 1px); background-size: 24px 24px;"></div>
+      <div class="relative text-center">
+        <div class="w-14 h-14 rounded-full border border-gold mx-auto mb-4 flex items-center justify-center">
+          <div class="w-3 h-3 rounded-full bg-gold"></div>
+        </div>
+        <p class="eyebrow text-cream/70">MEDERIS · вул. Раїси Окіпної, 4Б</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="bg-dark text-cream/60 py-14">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 flex flex-col md:flex-row items-center justify-between gap-6">
+    <p class="font-display text-2xl text-cream">MEDERIS</p>
+    <p class="text-sm">© 2026 Косметологическая клиника Ольги Лукиной. Киев.</p>
+    <div class="flex gap-6 eyebrow text-xs">
+      <a href="#hero" class="hover:text-gold transition-colors">Наверх</a>
+      <a href="#booking" class="hover:text-gold transition-colors">Запись</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+gsap.registerPlugin(ScrollTrigger);
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hasHover = window.matchMedia('(hover: hover)').matches;
+
+/* ---------- NAV BACKGROUND ---------- */
+const nav = document.getElementById('siteNav');
+ScrollTrigger.create({
+  start: 'top -80',
+  end: 99999,
+  onUpdate: self => {
+    if (self.scroll() > 80) { nav.classList.add('bg-cream/90','backdrop-blur','shadow-sm'); }
+    else { nav.classList.remove('bg-cream/90','backdrop-blur','shadow-sm'); }
+  }
+});
+
+/* ---------- CUSTOM CURSOR LENS ---------- */
+if (hasHover) {
+  const dot = document.getElementById('cursorDot');
+  const lens = document.getElementById('cursorLens');
+  const dotX = gsap.quickTo(dot, "x", {duration:0.15, ease:"power3"});
+  const dotY = gsap.quickTo(dot, "y", {duration:0.15, ease:"power3"});
+  const lensX = gsap.quickTo(lens, "x", {duration:0.5, ease:"power3"});
+  const lensY = gsap.quickTo(lens, "y", {duration:0.5, ease:"power3"});
+  window.addEventListener('mousemove', e => {
+    dotX(e.clientX); dotY(e.clientY);
+    lensX(e.clientX); lensY(e.clientY);
+  });
+  document.querySelectorAll('[data-lens]').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      lens.style.backgroundImage = `url(${el.dataset.lens})`;
+      gsap.to(lens, {opacity:1, scale:1, duration:0.5, ease:"power3.out"});
+      gsap.to(dot, {opacity:0, duration:0.3});
+    });
+    el.addEventListener('mouseleave', () => {
+      gsap.to(lens, {opacity:0, scale:0.4, duration:0.4, ease:"power3.in"});
+      gsap.to(dot, {opacity:0.7, duration:0.3});
+    });
+  });
+} else {
+  document.getElementById('cursorDot').remove();
+  document.getElementById('cursorLens').remove();
+}
+
+/* ---------- HERO PARALLAX ---------- */
+if (!reduceMotion) {
+  gsap.utils.toArray('.parallax-layer').forEach(layer => {
+    const speed = parseFloat(layer.dataset.speed || 0.2);
+    gsap.to(layer, {
+      yPercent: speed * 40,
+      ease: 'none',
+      scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom top', scrub: true }
+    });
+  });
+  const hero = document.getElementById('hero');
+  hero.addEventListener('mousemove', e => {
+    const cx = (e.clientX / window.innerWidth - 0.5);
+    const cy = (e.clientY / window.innerHeight - 0.5);
+    gsap.to('.parallax-layer', { x: (i,t) => cx * (18 * (t.dataset.speed ? Math.abs(t.dataset.speed)*3 : 1)), duration: 0.8, ease: 'power2.out', overwrite: 'auto' });
+  });
+}
+
+/* ---------- COUNTERS ---------- */
+document.querySelectorAll('.counter').forEach(el => {
+  const target = parseFloat(el.dataset.target);
+  const decimals = parseInt(el.dataset.decimal || 0);
+  ScrollTrigger.create({
+    trigger: el, start: 'top 88%', once: true,
+    onEnter: () => {
+      const obj = { val: 0 };
+      gsap.to(obj, {
+        val: target, duration: 1.8, ease: 'power2.out',
+        onUpdate: () => { el.textContent = decimals ? obj.val.toFixed(decimals) : Math.round(obj.val); }
+      });
+    }
+  });
+});
+
+/* ---------- SIGNATURE PINNED TRANSFORMATION ---------- */
+const afterLayer = document.getElementById('afterLayer');
+const dividerEl = document.getElementById('divider');
+const pctEl = document.getElementById('transformPct');
+
+if (!reduceMotion) {
+  ScrollTrigger.create({
+    trigger: '#transform',
+    start: 'top top',
+    end: '+=2200',
+    scrub: 0.6,
+    pin: true,
+    onUpdate: self => {
+      const p = self.progress;
+      afterLayer.style.clipPath = `inset(0 0 0 ${(1 - p) * 100}%)`;
+      dividerEl.style.left = `${p * 100}%`;
+      pctEl.textContent = `${Math.round(p * 100)}%`;
+    }
+  });
+} else {
+  afterLayer.style.clipPath = 'inset(0 0 0 0%)';
+  dividerEl.style.left = '100%';
+  pctEl.textContent = '100%';
+}
+
+/* ---------- GALLERY CURSOR REVEAL ---------- */
+document.querySelectorAll('.reveal-card').forEach(card => {
+  const after = card.querySelector('.after-img');
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    after.style.clipPath = `inset(0 0 0 ${Math.max(0, Math.min(100, x))}%)`;
+  });
+  card.addEventListener('mouseleave', () => {
+    gsap.to(after, {
+      clipPath: 'inset(0 0 0 100%)', duration: 0.6, ease: 'power2.out',
+      onUpdate: function () { /* keep clip-path in sync via direct style since gsap can't tween clip-path strings by default */ }
+    });
+    after.style.transition = 'clip-path 0.6s ease';
+    after.style.clipPath = 'inset(0 0 0 100%)';
+    setTimeout(() => { after.style.transition = ''; }, 650);
+  });
+  card.addEventListener('touchstart', () => {
+    after.style.clipPath = 'inset(0 0 0 0%)';
+  });
+});
+
+/* ---------- GALLERY FILTER ---------- */
+const filterBtns = document.querySelectorAll('.filter-btn');
+const cards = document.querySelectorAll('#galleryGrid .reveal-card');
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => b.classList.remove('bg-ink','text-cream'));
+    btn.classList.add('bg-ink','text-cream');
+    const f = btn.dataset.filter;
+    cards.forEach(c => {
+      const show = f === 'all' || c.dataset.cat === f;
+      c.style.display = show ? '' : 'none';
+    });
+  });
+});
+
+/* ---------- CALCULATOR ---------- */
+const calcData = {
+  acne:    { label: 'Лечение акне и постакне', items: ['Комплексная чистка', 'Противовоспалительный пилинг'], price: 900 },
+  age:     { label: 'Уход за возрастной кожей', items: ['Массаж лица', 'Консультация по биоревитализации'], price: 800 },
+  hair:    { label: 'Лазерная эпиляция', items: ['Диагностика зоны', 'Пробная процедура'], price: 600 },
+  tension: { label: 'Массаж тела', items: ['Массаж спины и шеи'], price: 800 }
+};
+const calcResults = document.getElementById('calcResults');
+const calcTotal = document.getElementById('calcTotal');
+document.querySelectorAll('.calc-check').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const checked = [...document.querySelectorAll('.calc-check:checked')].map(c => c.value);
+    if (!checked.length) {
+      calcResults.innerHTML = '<p class="text-ink/40 text-sm">Отметьте пункты слева, чтобы увидеть рекомендации</p>';
+      calcTotal.textContent = '0 ₴';
+      return;
+    }
+    let total = 0;
+    calcResults.innerHTML = checked.map(k => {
+      const d = calcData[k];
+      total += d.price;
+      return `<div><p class="font-display text-lg">${d.label}</p><p class="text-xs text-ink/50">${d.items.join(' · ')}</p></div>`;
+    }).join('');
+    calcTotal.textContent = total.toLocaleString('ru-RU') + ' ₴';
+  });
+});
+
+/* ---------- BOOKING WIDGET ---------- */
+const days = ['Пн','Вт','Ср','Чт','Пт','Сб'];
+const times = ['10:00','11:30','13:00','14:30','16:00','17:30','19:00'];
+const dayWrap = document.getElementById('bookDays');
+const slotWrap = document.getElementById('bookSlots');
+let selectedDay = null, selectedTime = null;
+
+days.forEach(d => {
+  const b = document.createElement('button');
+  b.textContent = d;
+  b.className = 'day-btn eyebrow px-5 py-3 border border-line hover:border-terra transition-colors';
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.day-btn').forEach(x => x.classList.remove('bg-ink','text-cream','border-ink'));
+    b.classList.add('bg-ink','text-cream','border-ink');
+    selectedDay = d;
+    updateSummary();
+  });
+  dayWrap.appendChild(b);
+});
+times.forEach(t => {
+  const b = document.createElement('button');
+  b.textContent = t;
+  b.className = 'time-btn eyebrow px-5 py-3 border border-line hover:border-terra transition-colors';
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(x => x.classList.remove('bg-ink','text-cream','border-ink'));
+    b.classList.add('bg-ink','text-cream','border-ink');
+    selectedTime = t;
+    updateSummary();
+  });
+  slotWrap.appendChild(b);
+});
+
+const bookSummary = document.getElementById('bookSummary');
+function updateSummary() {
+  if (selectedDay && selectedTime) {
+    bookSummary.textContent = `Вы выбрали: ${selectedDay}, ${selectedTime}. Услуга и специалист — как указано выше.`;
+  }
+}
+document.getElementById('bookSubmit').addEventListener('click', () => {
+  if (!selectedDay || !selectedTime) {
+    bookSummary.textContent = 'Пожалуйста, выберите день и время.';
+    bookSummary.classList.add('text-terra');
+    return;
+  }
+  const service = document.getElementById('bookService').value;
+  const master = document.getElementById('bookMaster').value;
+  document.getElementById('bookConfirm').classList.remove('hidden');
+  document.getElementById('bookConfirm').textContent =
+    `Заявка принята: ${service}, ${master}, ${selectedDay} в ${selectedTime}. Мы перезвоним для подтверждения.`;
+});
+</script>
+</body>
+</html>
