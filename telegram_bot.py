@@ -131,16 +131,18 @@ async def create_and_run(grid_bot, db_module):
             f"Цена: {s['current_price']}\n"
             f"Аптайм: {_fmt_uptime(s['uptime_seconds'])}\n\n"
             f"Депозит: {_fmt_money(c['deposit_usdt'], q)}\n"
-            f"Core / Extension: {_fmt_money(c['core_capital'], q)} / {_fmt_money(c['extension_capital'], q)}\n"
+            f"В обороте: {_fmt_money(c['trading_capital'], q)}\n"
             f"Резерв (не трогаем): {_fmt_money(c['reserve_usdt'], q)}\n"
             f"Заблокировано в Buy: {_fmt_money(c['locked_in_buys'], q)}\n\n"
+            f"Уровней: {s['grid']['levels_count']} · Шаг: {s['grid']['grid_step_usd']}$ · "
+            f"Объём/уровень: {s['grid']['qty']}\n\n"
             f"Сделок: {s['trades_completed']}\n"
             f"Профит (брутто): {s['total_profit']:.4f} {q}\n"
             f"Комиссии: ~{s['total_fees']:.4f} {q}\n"
             f"Профит (нетто): {s['net_profit']:.4f} {q}\n"
         )
         if safety["budget_exhausted"]:
-            text += "\n🛑 Бюджет (core+extension) исчерпан, ждём восстановления цены"
+            text += "\n🛑 Бюджет исчерпан, ждём восстановления цены"
         elif safety["extension_active"]:
             text += "\n⚠️ Цена ниже LOWER_BOUND — работаем в резервной зоне"
         if s["last_error"]:
