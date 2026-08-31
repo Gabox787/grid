@@ -18,19 +18,15 @@ services:
       - key: SYMBOL
         value: BTC/USDT
       - key: UPPER_BOUND
-        value: "66000"
+        value: "84000"
       - key: LOWER_BOUND
-        value: "60000"
-      - key: GRID_LEVELS
-        value: "10"
+        value: "70000"
+      - key: GRID_STEP_USD
+        value: "600"
       - key: DEPOSIT_USDT
         value: "2000"
-      - key: CORE_USAGE_RATIO
-        value: "0.6"
-      - key: EXTENSION_USAGE_RATIO
-        value: "0.2"
-      - key: EXTENSION_DROP_PCT
-        value: "0.15"
+      - key: CAPITAL_USAGE_RATIO
+        value: "0.8"
       - key: EXTENSION_LEVELS
         value: "5"
       - key: POLL_INTERVAL
@@ -41,11 +37,13 @@ services:
         value: "true"
       - key: FEE_RATE_PCT
         value: "0.001"
+      - key: STALE_RESUME_THRESHOLD_SECONDS
+        value: "1800"
       # Postgres для персистентности (Neon/Supabase, бесплатный тариф) — без него бот
       # просто живёт в памяти как раньше, без сохранения состояния между рестартами.
       - key: DATABASE_URL
         sync: false
-      # Опционально: уведомления kill-switch в Telegram
+      # Опционально: push по сделкам + команды управления + уведомления kill-switch в Telegram
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
