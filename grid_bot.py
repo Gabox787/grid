@@ -102,7 +102,9 @@ class GridBot:
 
         self.upper_bound = float(os.getenv("UPPER_BOUND", "66000"))
         self.lower_bound = float(os.getenv("LOWER_BOUND", "60000"))
-        self.grid_levels = int(os.getenv("GRID_LEVELS", "10"))
+        # Фиксированный шаг в $ между соседними уровнями — вместо количества уровней.
+        # Гарантирует одинаковое расстояние между покупкой и продажей КАЖДОГО ордера.
+        self.grid_step_usd = float(os.getenv("GRID_STEP_USD", "600"))
 
         self.poll_interval = float(os.getenv("POLL_INTERVAL", "10"))
         self.dry_run = os.getenv("DRY_RUN", "true").lower() == "true"
@@ -116,25 +118,23 @@ class GridBot:
         # В LIVE (dry_run=false) не применяется — там реальные ордера на бирже, реальные фиты.
         self.stale_resume_threshold = float(os.getenv("STALE_RESUME_THRESHOLD_SECONDS", "1800"))
 
-        # === Управление капиталом: CORE + EXTENSION ===
+        # === Управление капиталом: ОДИН общий пул, ОДИН объём на все уровни ===
+        # Раньше core/extension делили бюджет и объём на две разные зоны с разным шагом —
+        # теперь вся сетка (включая резервную зону ниже LOWER_BOUND) — один непрерывный
+        # список уровней с одинаковым шагом (GRID_STEP_USD) и одинаковым объёмом на уровень.
         self.deposit_usdt = float(os.getenv("DEPOSIT_USDT", "2000"))
-        self.core_usage_ratio = float(os.getenv("CORE_USAGE_RATIO", "0.6"))
-        self.extension_usage_ratio = float(os.getenv("EXTENSION_USAGE_RATIO", "0.2"))
-        self.extension_drop_pct = float(os.getenv("EXTENSION_DROP_PCT", "0.15"))
+        self.capital_usage_ratio = float(os.getenv("CAPITAL_USAGE_RATIO", "0.8"))
         self.extension_levels_count = int(os.getenv("EXTENSION_LEVELS", "5"))
 
-        if self.core_usage_ratio < 0 or self.extension_usage_ratio < 0:
-            raise ValueError("CORE_USAGE_RATIO и EXTENSION_USAGE_RATIO должны быть >= 0")
-        if self.core_usage_ratio + self.extension_usage_ratio > 1:
-            raise ValueError("CORE_USAGE_RATIO + EXTENSION_USAGE_RATIO не может быть больше 1")
-        if self.grid_levels < 2:
-            raise ValueError("GRID_LEVELS должен быть >= 2")
+        if self.capital_usage_ratio <= 0 or self.capital_usage_ratio > 1:
+            raise ValueError("CAPITAL_USAGE_RATIO должен быть в диапазоне (0, 1]")
+        if self.grid_step_usd <= 0:
+            raise ValueError("GRID_STEP_USD должен быть больше 0")
         if self.upper_bound <= self.lower_bound:
             raise ValueError("UPPER_BOUND должен быть больше LOWER_BOUND")
 
-        self.core_capital = round(self.deposit_usdt * self.core_usage_ratio, 2)
-        self.extension_capital = round(self.deposit_usdt * self.extension_usage_ratio, 2)
-        self.reserve_usdt = round(self.deposit_usdt - self.core_capital - self.extension_capital, 2)
+        self.trading_capital = round(self.deposit_usdt * self.capital_usage_ratio, 2)
+        self.reserve_usdt = round(self.deposit_usdt - self.trading_capital, 2)
 
         self.base_currency, self.quote_currency = self.symbol.split("/")
 
@@ -150,8 +150,7 @@ class GridBot:
         })
 
         self.levels: list[GridLevel] = []
-        self.qty_core: float = 0.0
-        self.qty_extension: float = 0.0
+        self.qty: float = 0.0  # один и тот же объём на КАЖДЫЙ уровень сетки
         self.extension_lower_bound: Optional[float] = None
         self.state = BotState()
         self.start_time: Optional[float] = None
@@ -231,18 +230,21 @@ class GridBot:
     # Расчёт уровней сетки
     # ------------------------------------------------------------------
 
-    def _calculate_core_levels(self) -> list[float]:
-        step = (self.upper_bound - self.lower_bound) / (self.grid_levels - 1)
-        return [round(self.lower_bound + i * step, 8) for i in range(self.grid_levels)]
-
-    def _calculate_extension_levels(self) -> list[float]:
-        if self.extension_levels_count <= 0 or self.extension_capital <= 0:
-            self.extension_lower_bound = self.lower_bound
-            return []
-        self.extension_lower_bound = round(self.lower_bound * (1 - self.extension_drop_pct), 8)
-        step = (self.lower_bound - self.extension_lower_bound) / self.extension_levels_count
-        prices = [round(self.lower_bound - step * i, 8) for i in range(1, self.extension_levels_count + 1)]
-        return sorted(prices)  # по возрастанию, строго ниже lower_bound
+    def _calculate_all_levels(self) -> list[float]:
+        """Один непрерывный список уровней с фиксированным шагом GRID_STEP_USD —
+        от (LOWER_BOUND минус запас на EXTENSION_LEVELS уровней) до UPPER_BOUND.
+        Соседние уровни всегда ровно на GRID_STEP_USD $ друг от друга — поэтому
+        расстояние между покупкой и продажей КАЖДОГО ордера одинаковое."""
+        self.extension_lower_bound = round(
+            self.lower_bound - self.extension_levels_count * self.grid_step_usd, 8
+        )
+        prices = []
+        p = self.extension_lower_bound
+        # небольшой эпсилон, чтобы избежать пропуска верхней границы из-за погрешности float
+        while p <= self.upper_bound + 1e-6:
+            prices.append(round(p, 8))
+            p += self.grid_step_usd
+        return prices
 
     # ------------------------------------------------------------------
     # Работа с ордерами
@@ -270,7 +272,7 @@ class GridBot:
 
     async def _check_balance_budget(self):
         """
-        Preflight: на бирже должно быть не меньше (core_capital + extension_capital)
+        Preflight: на бирже должно быть не меньше trading_capital
         свободного quote-актива. Если нет — бот не стартует, чтобы не разместить
         сетку "наполовину" и не остаться в непонятном состоянии.
         """
@@ -283,17 +285,16 @@ class GridBot:
             logger.warning(f"Не удалось проверить баланс перед стартом: {e}")
             return
 
-        required = self.core_capital + self.extension_capital
-        if free_quote < required:
+        if free_quote < self.trading_capital:
             raise RuntimeError(
                 f"Недостаточно {self.quote_currency}: доступно {free_quote:.2f}, "
-                f"требуется {required:.2f} (core {self.core_capital} + extension {self.extension_capital})"
+                f"требуется {self.trading_capital:.2f}"
             )
 
     async def initialize_grid(self):
         logger.info(
             f"Инициализация сетки {self.symbol}: {self.lower_bound}-{self.upper_bound}, "
-            f"уровней={self.grid_levels}, dry_run={self.dry_run}"
+            f"шаг={self.grid_step_usd}$, dry_run={self.dry_run}"
         )
 
         await self._check_balance_budget()
@@ -302,37 +303,33 @@ class GridBot:
         current_price = ticker["last"]
         self.state.current_price = current_price
 
-        core_prices = self._calculate_core_levels()
-        ext_prices = self._calculate_extension_levels()
-        n_ext = len(ext_prices)
-
-        all_prices = ext_prices + core_prices  # уже отсортированы по возрастанию, без пересечений
+        all_prices = self._calculate_all_levels()  # уже отсортированы по возрастанию, шаг = grid_step_usd
         self.levels = [GridLevel(index=i, price=p) for i, p in enumerate(all_prices)]
 
-        self.qty_core = round(self.core_capital / sum(core_prices), 8) if core_prices else 0.0
-        self.qty_extension = round(self.extension_capital / sum(ext_prices), 8) if ext_prices else 0.0
+        # Один и тот же объём на КАЖДЫЙ уровень — даже в худшем случае (все уровни разом
+        # стали бы Buy) суммарно потратится не больше trading_capital.
+        self.qty = round(self.trading_capital / sum(all_prices), 8) if all_prices else 0.0
 
         logger.info(
             f"Бюджет: депозит {self.deposit_usdt} {self.quote_currency} · "
-            f"core {self.core_capital} ({self.core_usage_ratio*100:.0f}%) · "
-            f"extension {self.extension_capital} ({self.extension_usage_ratio*100:.0f}%) · "
-            f"резерв {self.reserve_usdt}. Объём: core={self.qty_core}, extension={self.qty_extension}"
+            f"в оборот {self.trading_capital} ({self.capital_usage_ratio*100:.0f}%) · "
+            f"резерв {self.reserve_usdt}. Уровней: {len(all_prices)} (шаг {self.grid_step_usd}$). "
+            f"Объём на уровень: {self.qty}"
         )
 
-        for i, level in enumerate(self.levels):
-            zone_qty = self.qty_extension if i < n_ext else self.qty_core
+        for level in self.levels:
             if level.price <= current_price:
-                order_id = await self._place_order("buy", level.price, zone_qty)
+                order_id = await self._place_order("buy", level.price, self.qty)
                 if order_id:
                     level.side = "buy"
                     level.order_id = order_id
-                    level.amount = zone_qty
+                    level.amount = self.qty
             elif self.place_initial_sells:
-                order_id = await self._place_order("sell", level.price, zone_qty)
+                order_id = await self._place_order("sell", level.price, self.qty)
                 if order_id:
                     level.side = "sell"
                     level.order_id = order_id
-                    level.amount = zone_qty
+                    level.amount = self.qty
                     level.entry_price = current_price  # приблизительная точка отсчёта для профита
                     level.entry_time = datetime.now(timezone.utc)
                     level.origin_index = level.index  # своя же нумерация — реальной покупки не было
@@ -349,21 +346,19 @@ class GridBot:
             "symbol": self.symbol,
             "lower_bound": self.lower_bound,
             "upper_bound": self.upper_bound,
-            "grid_levels": self.grid_levels,
+            "grid_step_usd": self.grid_step_usd,
             "extension_levels": self.extension_levels_count,
-            "extension_drop_pct": self.extension_drop_pct,
         }
 
     async def _persist_full_state(self):
         if not db.enabled():
             return
-        # Сначала полностью чистим таблицу — иначе при уменьшении GRID_LEVELS/смене границ
-        # старые уровни с "хвостовыми" индексами остаются orphan-строками и могут потом
-        # подмешаться при восстановлении, ломая порядок цен по возрастанию.
+        # Сначала полностью чистим таблицу — иначе при смене шага/границ старые уровни
+        # с "хвостовыми" индексами остаются orphan-строками и могут потом подмешаться
+        # при восстановлении, ломая порядок цен по возрастанию.
         await db.clear_levels()
         await db.save_meta("config", self._config_fingerprint())
-        await db.save_meta("qty_core", self.qty_core)
-        await db.save_meta("qty_extension", self.qty_extension)
+        await db.save_meta("qty", self.qty)
         await db.save_meta("extension_lower_bound", self.extension_lower_bound)
         for level in self.levels:
             await db.save_level(level)
@@ -445,8 +440,7 @@ class GridBot:
 
         logger.info(f"Восстанавливаю {len(rows)} уровней сетки из БД после рестарта")
         self.levels = levels
-        self.qty_core = await db.load_meta("qty_core", 0.0) or 0.0
-        self.qty_extension = await db.load_meta("qty_extension", 0.0) or 0.0
+        self.qty = await db.load_meta("qty", 0.0) or 0.0
         self.extension_lower_bound = await db.load_meta("extension_lower_bound", self.lower_bound)
         self.state.trades_completed = await db.load_meta("trades_completed", 0) or 0
         self.state.total_profit = await db.load_meta("total_profit", 0.0) or 0.0
@@ -543,7 +537,7 @@ class GridBot:
 
             if level.side == "buy":
                 bought_price = fill_price
-                amount = level.amount or self.qty_core
+                amount = level.amount or self.qty
                 fee = fee_cost if fee_cost is not None else round(fill_price * amount * self.fee_rate_pct, 8)
                 self.state.total_fees += fee
 
@@ -589,7 +583,7 @@ class GridBot:
             elif level.side == "sell":
                 sell_price = fill_price
                 buy_price = level.entry_price
-                amount = level.amount or self.qty_core
+                amount = level.amount or self.qty
                 fee = fee_cost if fee_cost is not None else round(sell_price * amount * self.fee_rate_pct, 8)
                 self.state.total_fees += fee
                 # Позиция всегда отображается под номером уровня, где произошла ПОКУПКА,
@@ -664,7 +658,8 @@ class GridBot:
             self.state.extension_notified = True
             await self._notify(
                 f"⚠️ {self.symbol}: цена {price} ниже LOWER_BOUND ({self.lower_bound}). "
-                f"Включается резервная зона — ещё ${self.extension_capital} на догрузку на откатах. "
+                f"Включается резервная зона — ещё {self.extension_levels_count} уровней с тем же "
+                f"объёмом на догрузку на откатах, вплоть до {self.extension_lower_bound}. "
                 f"Открытые позиции никто не продаёт по рынку, ждут своего Sell-уровня.",
                 level="warning",
             )
@@ -849,14 +844,13 @@ class GridBot:
             "grid": {
                 "lower_bound": self.lower_bound,
                 "upper_bound": self.upper_bound,
-                "levels_count": self.grid_levels,
-                "qty_core": self.qty_core,
-                "qty_extension": self.qty_extension,
+                "levels_count": len(self.levels),
+                "grid_step_usd": self.grid_step_usd,
+                "qty": self.qty,
             },
             "capital": {
                 "deposit_usdt": self.deposit_usdt,
-                "core_capital": self.core_capital,
-                "extension_capital": self.extension_capital,
+                "trading_capital": self.trading_capital,
                 "reserve_usdt": self.reserve_usdt,
                 "locked_in_buys": locked_in_buys,
             },
