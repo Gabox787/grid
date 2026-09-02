@@ -99,11 +99,18 @@ async def create_and_run(grid_bot, db_module):
             return False
         if not grid_bot.ready.is_set():
             if grid_bot.state.status == "error":
+                next_retry = grid_bot.state.next_retry_at
+                retry_note = ""
+                if next_retry:
+                    seconds_left = max(0, int(next_retry - time.time()))
+                    retry_note = f"\n\n🔁 Бот сам повторит попытку через ~{seconds_left}с (попытка №{grid_bot.state.startup_attempt + 1})."
                 await message.answer(
-                    f"❌ Бот не смог инициализировать сетку и стоит с ошибкой:\n\n"
+                    f"❌ Попытка №{grid_bot.state.startup_attempt} инициализации сетки не удалась:\n\n"
                     f"{grid_bot.state.last_error or 'неизвестная ошибка'}\n\n"
-                    f"Смотри Render → Logs для полного трейсбэка. Бот НЕ перезапускается сам — "
-                    f"нужен redeploy после исправления."
+                    f"Смотри Render → Logs для полного трейсбэка."
+                    f"{retry_note}\n\n"
+                    f"Бот пробует сам автоматически (с нарастающей паузой) — redeploy нужен, "
+                    f"только если ошибка не транзиентная (например, неверный API-ключ)."
                 )
             else:
                 await message.answer("⏳ Бот ещё запускается (инициализация сетки / восстановление из БД). Попробуй через 10-15 секунд.")
