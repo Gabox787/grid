@@ -85,6 +85,8 @@ class BotState:
     cycles: int = 0
     extension_notified: bool = False   # цена сейчас ниже LOWER_BOUND, работаем в резервной зоне
     budget_exhausted: bool = False     # весь бюджет (core+extension) использован
+    startup_attempt: int = 0           # номер текущей попытки инициализации при старте
+    next_retry_at: Optional[float] = None  # unix-время следующей автоматической попытки
 
 
 class GridBot:
@@ -760,6 +762,7 @@ class GridBot:
         attempt = 0
         while not self._stop_event.is_set():
             attempt += 1
+            self.state.startup_attempt = attempt
             try:
                 resumed = await self._try_resume_from_db()
                 if not resumed:
@@ -771,6 +774,7 @@ class GridBot:
                 logger.exception(f"Ошибка инициализации сетки (попытка {attempt}), повтор через {retry_delay:.0f}с")
                 self.state.status = BotStatus.ERROR
                 self.state.last_error = str(e)
+                self.state.next_retry_at = time.time() + retry_delay
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=retry_delay)
                 except asyncio.TimeoutError:
@@ -827,6 +831,8 @@ class GridBot:
 
         return {
             "status": self.state.status.value,
+            "startup_attempt": self.state.startup_attempt,
+            "next_retry_at": self.state.next_retry_at,
             "paused": self.paused,
             "last_error": self.state.last_error,
             "symbol": self.symbol,
