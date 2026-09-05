@@ -33,8 +33,6 @@ services:
         value: "10"
       - key: DRY_RUN
         value: "true"
-      - key: PLACE_INITIAL_SELLS
-        value: "true"
       - key: FEE_RATE_PCT
         value: "0.001"
       - key: STALE_RESUME_THRESHOLD_SECONDS
