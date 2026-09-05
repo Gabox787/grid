@@ -333,16 +333,48 @@ async def create_and_run(grid_bot, db_module):
         q = grid_bot.quote_currency
         win_rate = f"{stats['win_rate']}%" if stats["win_rate"] is not None else "—"
         avg = f"{stats['avg_profit_per_cycle']:.4f}" if stats["avg_profit_per_cycle"] is not None else "—"
-        roi = f"{s['roi_pct']:+.2f}%" if s["roi_pct"] is not None else "—"
+
+        # Нереализованный PnL — по каждой открытой позиции (занятые Sell-уровни),
+        # честно считаем и те, что сейчас в минусе (цена улетела ниже цены покупки).
+        price = grid_bot.state.current_price
+        positions = [lvl for lvl in grid_bot.levels if lvl.side == "sell"]
+        unrealized_total = 0.0
+        unrealized_pos_sum = 0.0   # сумма только по тем, что сейчас в плюсе
+        unrealized_neg_sum = 0.0   # сумма только по тем, что сейчас в минусе
+        count_pos = 0
+        count_neg = 0
+        for lvl in positions:
+            if lvl.entry_price is None or price is None:
+                continue
+            amount = lvl.amount or 0
+            u = (price - lvl.entry_price) * amount
+            unrealized_total += u
+            if u >= 0:
+                unrealized_pos_sum += u
+                count_pos += 1
+            else:
+                unrealized_neg_sum += u
+                count_neg += 1
+
+        realized_net = s["net_profit"]
+        combined = realized_net + unrealized_total
+        roi_realized = f"{s['roi_pct']:+.2f}%" if s["roi_pct"] is not None else "—"
+        roi_combined = f"{combined / grid_bot.deposit_usdt * 100:+.2f}%" if grid_bot.deposit_usdt else "—"
 
         text = (
-            f"💰 Профит (брутто): {s['total_profit']:.4f} {q}\n"
-            f"Комиссии: {s['total_fees']:.4f} {q}\n"
-            f"Профит (нетто): {s['net_profit']:.4f} {q}\n"
-            f"ROI от депозита: {roi}\n\n"
-            f"Закрытых циклов: {stats['closed_cycles']}\n"
-            f"Винрейт: {win_rate}\n"
-            f"Средний профит/цикл: {avg} {q}"
+            f"💰 Реализованный (закрытые сделки):\n"
+            f"  Профит (брутто): {s['total_profit']:.4f} {q}\n"
+            f"  Комиссии: {s['total_fees']:.4f} {q}\n"
+            f"  Профит (нетто): {realized_net:.4f} {q}\n"
+            f"  ROI от депозита: {roi_realized}\n"
+            f"  Закрытых циклов: {stats['closed_cycles']} · Винрейт: {win_rate} · "
+            f"Средний профит/цикл: {avg} {q}\n\n"
+            f"📊 Нереализованный (открытых позиций: {len(positions)}):\n"
+            f"  В плюсе сейчас: {count_pos} шт. на {unrealized_pos_sum:+.4f} {q}\n"
+            f"  В минусе сейчас: {count_neg} шт. на {unrealized_neg_sum:+.4f} {q}\n"
+            f"  Итого нереализованный: {unrealized_total:+.4f} {q}\n\n"
+            f"🧮 Текущий общий PnL (реализованный + нереализованный): {combined:+.4f} {q}\n"
+            f"Общий ROI от депозита: {roi_combined}"
         )
         await message.answer(text)
 
