@@ -197,10 +197,14 @@ async def create_and_run(grid_bot, db_module):
             display_i = lvl.origin_index if (lvl.side == "sell" and lvl.origin_index is not None) else i
             remaining = (price - lvl.price) if lvl.side == "buy" else (lvl.price - price)
             icon = "📉" if lvl.side == "buy" else "📈"
+            if lvl.side == "buy":
+                second_line = f"🎯 Цель: {exit_price if exit_price else '—'}\n"
+            else:
+                second_line = f"🛒 Куплено: {entry_price if entry_price else '—'}\n"
             lines.append(
                 f"{icon} {lvl.side.upper()} ур.{display_i}\n"
                 f"💲 Цена: {lvl.price}\n"
-                f"🎯 Цель: {exit_price if exit_price else '—'}\n"
+                f"{second_line}"
                 f"💰 Остаток: {abs(remaining):.2f}$\n"
             )
 
@@ -208,7 +212,6 @@ async def create_and_run(grid_bot, db_module):
         for idx, (i, lvl, entry_price, exit_price, amount) in enumerate(occupied, start=1):
             icon = "📉" if lvl.side == "buy" else "📈"
             num = _num_emoji(idx)
-            target_str = exit_price if exit_price else "—"
 
             sum_usd = entry_price * amount if entry_price else None
             sum_str = f"{sum_usd:.2f}$" if sum_usd is not None else "—"
@@ -220,8 +223,13 @@ async def create_and_run(grid_bot, db_module):
             else:
                 profit_str = "—"
 
+            if lvl.side == "buy":
+                head = f"{num} {icon} {lvl.side.upper()}: {lvl.price} ✅ → Цель: {exit_price if exit_price else '—'}"
+            else:
+                head = f"{num} {icon} {lvl.side.upper()}: {lvl.price} ✅ (куплено: {entry_price if entry_price else '—'})"
+
             lines.append(
-                f"{num} {icon} {lvl.side.upper()}: {lvl.price} ✅ → Цель: {target_str}\n"
+                f"{head}\n"
                 f"    💵 {sum_str} ({amount} {b}) · Профит: {profit_str}"
             )
 
