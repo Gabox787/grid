@@ -110,7 +110,6 @@ class GridBot:
 
         self.poll_interval = float(os.getenv("POLL_INTERVAL", "10"))
         self.dry_run = os.getenv("DRY_RUN", "true").lower() == "true"
-        self.place_initial_sells = os.getenv("PLACE_INITIAL_SELLS", "true").lower() == "true"
         self.fee_rate_pct = float(os.getenv("FEE_RATE_PCT", "0.001"))  # 0.1% — типовая спот-комиссия, если биржа не вернула fee
         # В DRY_RUN нет реального стакана, который исполнял бы ордера пока бот лежит —
         # есть только сравнение "текущая цена vs уровень" на момент опроса. Если простой
@@ -326,15 +325,12 @@ class GridBot:
                     level.side = "buy"
                     level.order_id = order_id
                     level.amount = self.qty
-            elif self.place_initial_sells:
-                order_id = await self._place_order("sell", level.price, self.qty)
-                if order_id:
-                    level.side = "sell"
-                    level.order_id = order_id
-                    level.amount = self.qty
-                    level.entry_price = current_price  # приблизительная точка отсчёта для профита
-                    level.entry_time = datetime.now(timezone.utc)
-                    level.origin_index = level.index  # своя же нумерация — реальной покупки не было
+            # Уровни выше стартовой цены сознательно остаются свободными — бот никогда
+            # не выставляет Sell без реальной предшествующей покупки. Раньше здесь
+            # ставились "авансовые" Sell с entry_price = стартовая цена — это выглядело
+            # так, будто бот продаёт монету, которую не покупал, и путало при чтении
+            # /grid и /positions. Эти уровни заполнятся сами по цепочке, когда цена
+            # реально дойдёт снизу и купит уровень за уровнем.
 
         await self._persist_full_state()
         logger.info(f"Сетка инициализирована. Текущая цена: {current_price}")
